@@ -8,7 +8,6 @@
 using namespace std;
 struct HIGGSItem
 {
-    static const int NUMBER_OF_FEATURE = 28;
     float *X;
     float *y;
     int size;
@@ -21,9 +20,11 @@ class HIGGSDataset
     string file_name;
     ifstream file;
     bool has_next;
+
   public:
     HIGGSDataset(string fname, int batch_size);
     HIGGSItem getNextBatch(bool transposed);
     bool hasNext();
+    static const int NUMBER_OF_FEATURE = 28;
 };
 #endif
