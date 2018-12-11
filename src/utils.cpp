@@ -1,5 +1,6 @@
 #include "utils.h"
 #include <cmath>
+#include <iostream>
 float *generate_random_weight(int n)
 {
     float *a = (float *)malloc(sizeof(float) * n);
@@ -15,7 +16,10 @@ float *generate_random_weight(int n)
 
 float sigmoid(float f)
 {
-    return 1.0f / (1.0f + expf(-1.0f * f));
+    float res = 1.0f / (1.0f + expf(-1.0f * f));
+    if (res != res)
+        std::cout << f << std::endl;
+    return res;
 }
 
 float *generate_zeros(int n)

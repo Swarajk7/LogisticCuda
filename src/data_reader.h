@@ -25,6 +25,7 @@ class HIGGSDataset
     HIGGSDataset(string fname, int batch_size);
     HIGGSItem getNextBatch(bool transposed);
     bool hasNext();
+    void reset();
     static const int NUMBER_OF_FEATURE = 28;
 };
 #endif

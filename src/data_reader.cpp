@@ -39,7 +39,7 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
     {
         for (int i = 0; i < item.size; i++)
         {
-            item.X[xindex++] = 0.0f;
+            item.X[xindex++] = 1.0f;
         }
     }
     while (getline(file, line))
@@ -52,9 +52,9 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
         assert(tokens.size() == 29);
         item.y[yindex++] = stof(tokens[0]);
         if (!transposed)
-            item.X[xindex++] = 0.0;
+            item.X[xindex++] = 1.0f;
 
-        for (int i = 1; i < tokens.size(); i++)
+        for (unsigned int i = 1; i < tokens.size(); i++)
         {
             float xx = stof(tokens[i]);
             if (!transposed)
@@ -90,4 +90,11 @@ void HIGGSItem::allocateMemory(int sz)
     size = sz;
     y = (float *)malloc(sizeof(float) * sz);
     X = (float *)malloc(sizeof(float) * sz * (HIGGSDataset::NUMBER_OF_FEATURE + 1));
+}
+
+void HIGGSDataset::reset()
+{
+    file.clear();
+    file.seekg(0, ios::beg);
+    has_next = true;
 }

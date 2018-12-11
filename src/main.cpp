@@ -8,38 +8,30 @@ int main(int argc, char *argv[])
 	{
 		batch_size = stoi(argv[1]);
 	}
-	HIGGSDataset dataset("./data/sample.csv", batch_size);
+	HIGGSDataset dataset("./data/HIGGS_Sample.csv", batch_size);
 	LogisticRegression classifier(HIGGSDataset::NUMBER_OF_FEATURE);
 	int batch_no = 0;
 
-	HIGGSDataset valdataset("./data/sample.csv", batch_size);
+	HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
 	std::cout << classifier.evaluate(valdataset);
 
-	HIGGSDataset valdataset2("./data/sample.csv", batch_size);
-	int count = 0, total = 0;
-	while (valdataset2.hasNext())
+	for (int i = 0; i < 10; i++)
 	{
-		HIGGSItem batch = valdataset2.getNextBatch(false);
-		for (int i = 0; i < batch.N; i++)
-			count += batch.y[i];
-		total += batch.N;
-	}
-	cout << count << " " << total << endl;
-	while (dataset.hasNext())
-	{
-		/*
-		 1. train logistic
-		 2. compute accuracy for validation set
-		 */
-		++batch_no;
-		HIGGSItem batch = dataset.getNextBatch(false);
-		classifier.trainBatch(batch, 0.01);
-		if (batch_no % 20 == 0)
+		dataset.reset();
+		while (dataset.hasNext())
 		{
-			std::cout << "Finished training batch: " << batch_no << endl;
-			std::cout << "Evaluating! Accuracy: ";
-			HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
-			std::cout << classifier.evaluate(valdataset) << endl;
+			/*
+			1. train logistic
+			2. compute accuracy for validation set
+			*/
+			++batch_no;
+			HIGGSItem batch = dataset.getNextBatch(false);
+			if (batch.N == batch_size)
+				classifier.trainBatch(batch, 0.0001);
 		}
+		std::cout << "Finished training one epoch: " << batch_no << endl;
+		std::cout << "Evaluating! Accuracy: ";
+		valdataset.reset();
+		std::cout << classifier.evaluate(valdataset) << endl;
 	}
 }

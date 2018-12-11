@@ -38,7 +38,7 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
     // Update Gradients after multiplying with learning rate
     for (int i = 0; i < num_features + 1; i++)
     {
-        weights[i] -= learning_rate * grad_weights[i];
+        weights[i] -= (learning_rate * grad_weights[i]) / item.N;
     }
     free(result);
     return 0;
@@ -47,6 +47,12 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
 float LogisticRegression::evaluate(HIGGSDataset &validationSet)
 {
     float correct = 0, total = 0;
+    float mul = 0.0f;
+    for (int j = 0; j < num_features + 1; j++)
+    {
+        mul += weights[j];
+    }
+    cout << "\n Sum: " << mul << endl;
     while (validationSet.hasNext())
     {
         int xindex = 0;
