@@ -15,7 +15,7 @@ float * AllocateDeviceArray(int num_elements)
     return devArray;
 }
 
-void InitailizeDeviceArrayValues(float * devArray,int num_elements, int random = 0)
+void InitailizeDeviceArrayValues(float * devArray,int num_elements, bool random = 0)
 {
 	int size = num_elements * sizeof(float);
 	if(random==1){
@@ -34,34 +34,43 @@ void SetDeviceArrayValues(float * devArray,float * hostArray, int num_elements){
 	cudaMemcpy(devArray,hostArray,size,cudaMemcpyHostToDevice);
 }
 
- 
-void GPUClassificationModel::initializeWeights(int random=0){
+
+//Keeping a preTrained flag right now for future use of preTrained weights as well. 
+void GPUClassificationModel::initializeWeights(bool random=0,bool preTrained=0){
 		weights = AllocateDeviceArray(num_features);
 		InitailizeDeviceArrayValues(weights,num_features,random);
 	}
 	
- GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features = 28, int random = 0){
+ GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features = 28, bool random = 0){
 		batch_size = batch_size;
 		//Taking care of the weight for bias by adding 1
 		num_features = num_features+1;
 		initializeWeights(random);
-		X = AllocateDeviceArray(batch_size*(num_features));
+		
+		grad_weights = AllocateDeviceArray(num_features);
+		intermediate_vector = AllocateDeviceArray(batch_size);
+		
+		X = AllocateDeviceArray(batch_size*num_features);
 		y = AllocateDeviceArray(batch_size);
 	}
 	
-GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features = 28, int random = 0){
+GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features = 28, bool random = 0){
 		batch_size = item.size;
 		N = item.N;
 		//Taking care of the weight for bias by adding 1
 		num_features = num_features+1;
 		initializeWeights(random);
+		
+		grad_weights = AllocateDeviceArray(num_features);
+		intermediate_vector = AllocateDeviceArray(batch_size);
+		
 		X = AllocateDeviceArray(batch_size*num_features);
 		y = AllocateDeviceArray(batch_size);
 		SetDeviceArrayValues(X,item.X,batch_size*num_features);
 		SetDeviceArrayValues(y,item.y,batch_size);
 	}
 	
-void GPUClassificationModel::resetWeights(int random = 0){
+void GPUClassificationModel::resetWeights(bool random = 0){
 		InitailizeDeviceArrayValues(weights,num_features,random);
 	}
 	
@@ -79,6 +88,35 @@ void GPUClassificationModel::evaluateModel(){
 		//Evaluating Kernel code here
 	}
 
-void GPUClassificationModel::trainModel(){
+void GPUClassificationModel::trainModel(bool memory_coalescing){
 		//training kernel code here
+		//We can pass the "this" item also instead of individual values 
+		//trainingKernel(weights,X,y,memory_coalescing);
+		
+		int num_threads_p_block = BLOCK_SIZE;
+		int num_blocks = ceilf((N*1.0f)/num_threads_p_block); 
+		
+		dim3 GridSize(num_blocks,1,1);
+		dim3 BlockSize(num_threads_p_block,1,1);
+		int X_dim = 32;
+		
+		if(memory_coalescing){
+			memory_coalescedKernel<<<GridSize,BlockSize>>>(weights,X,y,intermediate_vector,size,N,num_features);
+			externalKernel<<<dim3 (1,1,1),dim3 (X_dim,num_features,1)>>>(grad_weights,X,intermediate_vector,size,N,num_features,X_dim)
+			//Subtract W with GradWeights
+		}
+		else{
+			uncoalescedKernel<<<GridSize,BlockSize>>>(weights,X,y,intermediate_vector,size,N,num_features);
+			externalKernel<<<dim3 (1,1,1),dim3 (X_dim,num_features,1)>>>(grad_weights,X,intermediate_vector,size,N,num_features,X_dim)
+			//Subtract W with GradWeights
+		}
+}
+
+		
+		
+		
+		
+		
+		
+		
 }

@@ -1,8 +1,12 @@
+#define BLOCK_SIZE 32
+
 class GPUClassificationModel
 {
     float * weights;
 	float * X;
 	float * y;
+	float * grad_weights;
+	float * intermediate_vector;
 	int batch_size;
 	int N;
 	int num_features;
