@@ -49,7 +49,7 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
             2. convert each string element to float.
         */
         vector<string> tokens = split(line);
-        assert(tokens.size() == 29);
+        assert(tokens.size() == HIGGSDataset::NUMBER_OF_FEATURE + 1);
         item.y[yindex++] = stof(tokens[0]);
         if (!transposed)
             item.X[xindex++] = 1.0f;
