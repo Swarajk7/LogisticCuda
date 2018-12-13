@@ -104,19 +104,16 @@ void GPUClassificationModel::trainModel(bool memory_coalescing){
 			memory_coalescedKernel<<<GridSize,BlockSize>>>(weights,X,y,intermediate_vector,size,N,num_features);
 			externalKernel<<<dim3 (1,1,1),dim3 (X_dim,num_features,1)>>>(grad_weights,X,intermediate_vector,size,N,num_features,X_dim)
 			//Subtract W with GradWeights
+			for(int i=0;i<num_features;i++){
+				weights[i] -= grad_weights[i]
+			}
 		}
 		else{
 			uncoalescedKernel<<<GridSize,BlockSize>>>(weights,X,y,intermediate_vector,size,N,num_features);
 			externalKernel<<<dim3 (1,1,1),dim3 (X_dim,num_features,1)>>>(grad_weights,X,intermediate_vector,size,N,num_features,X_dim)
 			//Subtract W with GradWeights
+			for(int i=0;i<num_features;i++){
+				weights[i] -= grad_weights[i]
+			}
 		}
-}
-
-		
-		
-		
-		
-		
-		
-		
 }

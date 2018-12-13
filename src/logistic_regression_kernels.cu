@@ -49,6 +49,4 @@ __global__ void externalKernel(float * grad_weights,float * X,float * intermedia
 
 
 __global__ void uncoalescedKernel(float * weights,float * X,float * y,float * intermediate_vector,int size,int N, int num_features){
-	
 }
-
