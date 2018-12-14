@@ -92,7 +92,7 @@ void GPUClassificationModel::setData(HIGGSItem item)
 	SetDeviceArrayValues(y, item.y, batch_size);
 }
 
-void GPUClassificationModel::evaluateModel()
+void GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalescing)
 {
 
 	//Evaluating Kernel code here
@@ -119,7 +119,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 	if (memory_coalescing)
 	{
 		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 		//Subtract W with GradWeights
 		// for (int i = 0; i < num_features; i++)
 		// {
@@ -129,7 +129,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 	else
 	{
 		uncoalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 		//Subtract W with GradWeights
 		// for (int i = 0; i < num_features; i++)
 		// {

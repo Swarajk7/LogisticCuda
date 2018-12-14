@@ -25,7 +25,7 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 	}
 }
 
-__global__ void externalKernel(float * weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, const int X_dim)
+__global__ void externalKernel(float * weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, const int X_dim, float learning_rate)
 {
 	__shared__ float values[32][29];
 	__shared__ float intermediate_shared[32];
