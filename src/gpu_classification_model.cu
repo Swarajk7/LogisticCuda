@@ -94,15 +94,17 @@ void GPUClassificationModel::setData(HIGGSItem item)
 
 void GPUClassificationModel::evaluateModel()
 {
-	
+
 	//Evaluating Kernel code here
 }
 
-void GPUClassificationModel::trainModel(bool memory_coalescing,float learning_rate)
+void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
 	//trainingKernel(weights,X,y,memory_coalescing);
+	setData(item);
+
 	this.learning_rate = learning_rate
 
 	printf("Running trainmodel()\n");
