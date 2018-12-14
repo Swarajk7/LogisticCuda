@@ -94,14 +94,16 @@ void GPUClassificationModel::setData(HIGGSItem item)
 
 void GPUClassificationModel::evaluateModel()
 {
+	
 	//Evaluating Kernel code here
 }
 
-void GPUClassificationModel::trainModel(bool memory_coalescing)
+void GPUClassificationModel::trainModel(bool memory_coalescing,float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
 	//trainingKernel(weights,X,y,memory_coalescing);
+	this.learning_rate = learning_rate
 
 	printf("Running trainmodel()\n");
 
@@ -115,21 +117,21 @@ void GPUClassificationModel::trainModel(bool memory_coalescing)
 	if (memory_coalescing)
 	{
 		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
 		//Subtract W with GradWeights
-		for (int i = 0; i < num_features; i++)
-		{
-			weights[i] -= grad_weights[i];
-		}
+		// for (int i = 0; i < num_features; i++)
+		// {
+		// 	weights[i] -= grad_weights[i];
+		// }
 	}
 	else
 	{
 		uncoalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
 		//Subtract W with GradWeights
-		for (int i = 0; i < num_features; i++)
-		{
-			weights[i] -= grad_weights[i];
-		}
+		// for (int i = 0; i < num_features; i++)
+		// {
+		// 	weights[i] -= grad_weights[i];
+		// }
 	}
 }

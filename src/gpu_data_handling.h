@@ -11,6 +11,7 @@ class GPUClassificationModel
 	int batch_size;
 	int N;
 	int num_features;
+	float learning_rate;
 
   private:
 	void initializeWeights(bool random = false, bool preTrained = false);
@@ -21,5 +22,5 @@ class GPUClassificationModel
 	void resetWeights(bool random = false);
 	void setData(HIGGSItem item);
 	void evaluateModel();
-	void trainModel(bool memory_coalescing);
+	void trainModel(bool memory_coalescing,float learning_rate);
 };
