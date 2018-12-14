@@ -12,13 +12,13 @@ class GPUClassificationModel
 	int N;
 	int num_features;
 
-private:
-	void initializeWeights(bool random = 0, bool preTrained = 0);
+  private:
+	void initializeWeights(bool random = false, bool preTrained = false);
 
-public:
-	GPUClassificationModel(int batch_size, int num_features = 28, bool random = 0);
-	GPUClassificationModel(HIGGSItem item, int num_features = 28, bool random = 0);
-	void resetWeights(bool random = 0);
+  public:
+	GPUClassificationModel(int batch_size, int num_features = 28, bool random = false);
+	GPUClassificationModel(HIGGSItem item, int num_features = 28, bool random = false);
+	void resetWeights(bool random = false);
 	void setData(HIGGSItem item);
 	void evaluateModel();
 	void trainModel(bool memory_coalescing);

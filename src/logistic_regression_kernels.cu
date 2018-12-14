@@ -10,11 +10,11 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 	int stride = 0;
 	float value = 0;
 	//Start needs to be verified
-	int start = index
+	int start = index;
 	//int start = index * num_features;
 	if (start < N)
 	{
-		for (int i; i < num_features; i++)
+		for (int i = 0; i < num_features; i++)
 		{
 			value += weights[i] * X[start + stride];
 			stride += size;
@@ -27,14 +27,14 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 
 __global__ void externalKernel(float *grad_weights, float *X, float *intermediate_vector, int size, int N, int num_features, int X_dim)
 {
-	__shared__ float values[X_dim][num_features] = 0;
-	__shared__ float intermediate_shared[X_dim];
+	__shared__ float values[30][40];		  //[X_dim][num_features];
+	__shared__ float intermediate_shared[20]; //[X_dim];
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
 	for (int m = 0; m < ceilf((N * 1.0f) / X_dim); m++)
 	{
-		Col = tx + m * X_dim;
-		Row = ty;
+		int Col = tx + m * X_dim;
+		int Row = ty;
 		if (Col < N)
 		{
 			if (ty == 0)
@@ -52,7 +52,7 @@ __global__ void externalKernel(float *grad_weights, float *X, float *intermediat
 		{
 			values[tx][ty] += values[tx + q][ty];
 		}
-		grad_weights[ty] = values[tx][ty]
+		grad_weights[ty] = values[tx][ty];
 	}
 }
 
@@ -63,7 +63,7 @@ __global__ void uncoalescedKernel(float *weights, float *X, float *y, float *int
 	int start = index * num_features;
 	if (start < N)
 	{
-		for (int i; i < num_features; i++)
+		for (int i = 0; i < num_features; i++)
 		{
 			value += weights[i] * X[start + i];
 		}

@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
 	int batch_no = 0;
 
 	HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
-	std::cout << classifier.evaluate(valdataset);
+	// std::cout << classifier.evaluate(valdataset);
 
 	// for (int i = 0; i < 10; i++)
 	// {
@@ -72,7 +72,7 @@ int main(int argc, char *argv[])
 			HIGGSItem batch = dataset.getNextBatch(true);
 			model.setData(batch);
 			if (batch.N == batch_size)
-				model.trainModel();
+				model.trainModel(true);
 			total += batch.N;
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;

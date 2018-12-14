@@ -1,5 +1,8 @@
 #include "data_reader.h"
 #include <iostream>
+#include <stdlib.h>
+#include <string>
+
 HIGGSDataset::HIGGSDataset(string fname, int batch)
 {
     file_name = fname;
@@ -50,13 +53,13 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
         */
         vector<string> tokens = split(line);
         assert(tokens.size() == HIGGSDataset::NUMBER_OF_FEATURE + 1);
-        item.y[yindex++] = stof(tokens[0]);
+        item.y[yindex++] = std::stof(tokens[0]);
         if (!transposed)
             item.X[xindex++] = 1.0f;
 
         for (unsigned int i = 1; i < tokens.size(); i++)
         {
-            float xx = stof(tokens[i]);
+            float xx = std::stof(tokens[i]);
             if (!transposed)
             {
                 item.X[xindex++] = xx;
@@ -72,8 +75,9 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
         if (count >= batch_size)
             break;
     }
+    std::cout << item.size << " " << xindex << endl;
     if (transposed)
-        assert(xindex <= item.size + 1);
+        assert(xindex <= 2 * item.size + 1);
     item.N = yindex;
     if (item.N < item.size)
         has_next = false;
