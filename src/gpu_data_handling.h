@@ -28,3 +28,4 @@ class GPUClassificationModel
 	void trainModel(HIGGSItem item,bool memory_coalescing,float learning_rate);
 	void printWeights();
 };
+void dbl_buffer(int,const char *);

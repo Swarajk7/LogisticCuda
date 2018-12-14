@@ -42,13 +42,13 @@ $(BIN)/data_reader_cpp.o: $(SRC)/data_reader.cpp
 $(BIN)/utils.o: $(SRC)/utils.cpp
 	$(NVCC) -c -o $@ $(SRC)/utils.cpp $(NVCC_FLAGS)
 
-$(BIN)/main.o: $(SRC)/main.cpp
+$(BIN)/main.o: $(SRC)/main.cpp 
 	$(NVCC) -c -o $@ $(SRC)/main.cpp $(NVCC_FLAGS)
 
 $(BIN)/logistic.o: $(SRC)/logistic.cpp
 	$(NVCC) -c -o $@ $(SRC)/logistic.cpp $(NVCC_FLAGS)
 
-$(BIN)/gpu_classification_model_cu.o: $(SRC)/gpu_classification_model.cu $(SRC)/logistic_regression_kernels.cu
+$(BIN)/gpu_classification_model_cu.o: $(SRC)/gpu_classification_model.cu $(SRC)/logistic_regression_kernels.cu $(SRC)/support.h
 	$(NVCC) -c -o $@ $(SRC)/gpu_classification_model.cu $(NVCC_FLAGS)
 
 $(BIN)/$(EXECUTABLE): $(OBJ)

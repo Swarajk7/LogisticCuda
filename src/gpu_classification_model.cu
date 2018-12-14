@@ -165,12 +165,12 @@ void GPUClassificationModel::printWeights(){
 
 
 
-void dbl_buffer()
+void dbl_buffer(int num,const char* file_name)
 {
 
 //static const size_t host_buffer_size = 512 * 1024;
-int main(int argc, char *argv[])
-{
+//int main(int argc, char *argv[])
+//{
     int fd = -1;
     static const size_t host_buffer_size = 1024 * 1024;
     struct stat file_stat;
@@ -187,13 +187,13 @@ clock_t start_time,end_time;
         double total_time;	
 	srand(2012);
 
-    if(argc < 2) FATAL("Bad argument count");
+    if(num < 2) FATAL("Bad argument count");
     /* Open the file */
-    if((fd = open(argv[1], O_RDONLY)) < 0)
-        FATAL("Unable to open %s", argv[1]);
+    if((fd = open(file_name, O_RDONLY)) < 0)
+        FATAL("Unable to open %s", file_name);
 
     if(fstat(fd, &file_stat) < 0)
-        FATAL("Unable to read meta data for %s", argv[1]);
+        FATAL("Unable to read meta data for %s", file_name);
     /* Create CUDA stream for asynchronous copies */
    
      cuda_ret = cudaStreamCreate(&cuda_stream);
@@ -228,7 +228,7 @@ clock_t start_time,end_time;
         if(cuda_ret != cudaSuccess) FATAL("Unable to wait for event");
         transfer_size = (pending > host_buffer_size) ? host_buffer_size : pending;
         if(read(fd, active, transfer_size) < transfer_size)
-            FATAL("Unable to read data from %s", argv[1]);
+            FATAL("Unable to read data from %s", file_name);
 
 /* Send data to the device asynchronously */
         cuda_ret = cudaMemcpyAsync(current, active, transfer_size,cudaMemcpyHostToDevice, cuda_stream);
@@ -258,7 +258,9 @@ clock_t start_time,end_time;
    cuda_ret = cudaFreeHost(host_buffer);
    if(cuda_ret != cudaSuccess) FATAL("Unable to free host memory");
    close(fd);
- return 0;
-}
+
+   fprintf(stdout,"File Size %d", file_stat.st_size);
+// return 0;
+//}
 
 }
