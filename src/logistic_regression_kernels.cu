@@ -25,10 +25,10 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 	}
 }
 
-__global__ void externalKernel(float *grad_weights, float *X, float *intermediate_vector, int size, int N, int num_features, int X_dim)
+__global__ void externalKernel(float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, const int X_dim)
 {
-	__shared__ float values[30][40];		  //[X_dim][num_features];
-	__shared__ float intermediate_shared[20]; //[X_dim];
+	__shared__ float values[32][29];
+	__shared__ float intermediate_shared[32];
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
 	for (int m = 0; m < ceilf((N * 1.0f) / X_dim); m++)

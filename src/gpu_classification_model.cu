@@ -46,9 +46,9 @@ void GPUClassificationModel::initializeWeights(bool random, bool preTrained)
 
 GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features, bool random)
 {
-	batch_size = batch_size;
+	this->batch_size = batch_size;
 	//Taking care of the weight for bias by adding 1
-	num_features = num_features + 1;
+	this->num_features = num_features + 1;
 	initializeWeights(random);
 
 	grad_weights = AllocateDeviceArray(num_features);
@@ -102,30 +102,31 @@ void GPUClassificationModel::trainModel(bool memory_coalescing)
 	//We can pass the "this" item also instead of individual values
 	//trainingKernel(weights,X,y,memory_coalescing);
 
+	printf("Running trainmodel()\n");
+
 	int num_threads_p_block = BLOCK_SIZE;
 	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
 
 	dim3 GridSize(num_blocks, 1, 1);
 	dim3 BlockSize(num_threads_p_block, 1, 1);
-	int X_dim = 32;
-	int size = 10;
+	const int X_dim = 32;
 
 	if (memory_coalescing)
 	{
-		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, size, N, num_features, X_dim);
-			//Subtract W with GradWeights
-			for (int i = 0; i < num_features; i++)
+		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		//Subtract W with GradWeights
+		for (int i = 0; i < num_features; i++)
 		{
 			weights[i] -= grad_weights[i];
 		}
 	}
 	else
 	{
-		uncoalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, size, N, num_features, X_dim);
-			//Subtract W with GradWeights
-			for (int i = 0; i < num_features; i++)
+		uncoalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim);
+		//Subtract W with GradWeights
+		for (int i = 0; i < num_features; i++)
 		{
 			weights[i] -= grad_weights[i];
 		}
