@@ -72,15 +72,15 @@ int main(int argc, char *argv[])
 			*/
 			++batch_no;
 			HIGGSItem batch = dataset.getNextBatch(false);
-			if(batch_no ==0) {
-				for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
-				printf("\n");
-				model.printWeights();
-			}
 			//model.setData(batch);
 			if (batch.N == batch_size)
 				model.trainModel(batch,true,0.001);
 			total += batch.N;
+			if(batch_no ==1) {
+				for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
+				printf("\n");
+				model.printWeights();
+			}
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
 		//model.printWeights();

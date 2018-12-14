@@ -7,9 +7,9 @@
 #include "logistic_regression_kernels.cu"
 
 // Allocate a device memory of num_elements float elements
-float *AllocateDeviceArray(int num_elements)
+float * AllocateDeviceArray(int num_elements)
 {
-	float *devArray;
+	float * devArray;
 	int size = num_elements * sizeof(float);
 	cudaMalloc((void **)&devArray, size);
 	return devArray;
