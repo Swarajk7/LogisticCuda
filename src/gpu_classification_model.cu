@@ -56,6 +56,8 @@ GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features,
 
 	X = AllocateDeviceArray(batch_size * num_features);
 	y = AllocateDeviceArray(batch_size);
+	correct_val = AllocateDeviceArray(1);
+	cudaMemset(correct_val, 0, sizeof(float));
 }
 
 GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features, bool random)
@@ -71,6 +73,8 @@ GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features,
 
 	X = AllocateDeviceArray(batch_size * num_features);
 	y = AllocateDeviceArray(batch_size);
+	correct_val = AllocateDeviceArray(1);
+	cudaMemset(correct_val, 0, sizeof(float));
 	SetDeviceArrayValues(X, item.X, batch_size * num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
 }
@@ -92,10 +96,19 @@ void GPUClassificationModel::setData(HIGGSItem item)
 	SetDeviceArrayValues(y, item.y, batch_size);
 }
 
-void GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalescing)
+float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalescing)
 {
-
 	//Evaluating Kernel code here
+	cudaMemset(correct_val, 0, sizeof(float));
+	int num_threads_p_block = BLOCK_SIZE;
+	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
+
+	dim3 GridSize(num_blocks, 1, 1);
+	dim3 BlockSize(num_threads_p_block, 1, 1);
+	evaluate_model<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features,correct_val);
+	float * host_correct_val = (float *)malloc(sizeof(float));
+	cudaMemcpy(host_correct_val,correct_val,sizeof(float),cudaMemcpyDeviceToHost);
+	return *host_correct_val;
 }
 
 void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,float learning_rate)
@@ -107,7 +120,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 
 	this->learning_rate = learning_rate;
 
-	printf("Running trainmodel()\n");
+	//printf("Running trainmodel()\n");
 
 	int num_threads_p_block = BLOCK_SIZE;
 	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
@@ -136,4 +149,8 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 		// 	weights[i] -= grad_weights[i];
 		// }
 	}
+}
+
+void GPUClassificationModel::printWeights(){	
+	printKernel<<<dim3(1,1),dim3(1,1)>>>(X,num_features);
 }

@@ -56,7 +56,9 @@ int main(int argc, char *argv[])
 	// 	std::cout << classifier.evaluate(valdataset) << endl;
 	// }
 
-	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
+	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, false);
+	//model.printWeights();
+
 
 	for (int i = 0; i < 10; i++)
 	{
@@ -69,15 +71,29 @@ int main(int argc, char *argv[])
 			2. compute accuracy for validation set
 			*/
 			++batch_no;
-			HIGGSItem batch = dataset.getNextBatch(true);
+			HIGGSItem batch = dataset.getNextBatch(false);
+			if(batch_no ==0) {
+				for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
+				printf("\n");
+				model.printWeights();
+			}
 			//model.setData(batch);
 			if (batch.N == batch_size)
 				model.trainModel(batch,true,0.001);
 			total += batch.N;
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
+		//model.printWeights();
 		std::cout << "Evaluating! Accuracy: ";
 		valdataset.reset();
-		std::cout << classifier.evaluate(valdataset) << endl;
+		
+		total = 0;
+		float corr=0;
+		while(valdataset.hasNext()) {
+			HIGGSItem item = valdataset.getNextBatch(true);
+			total += item.N;
+			corr+=model.evaluateModel(item,true);
+		}
+		std::cout << corr/total << std::endl;
 	}
 }

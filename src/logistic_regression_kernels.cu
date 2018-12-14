@@ -42,9 +42,8 @@ __global__ void externalKernel(float * weights, float *grad_weights, float *X, f
 			__syncthreads();
 
 			values[tx][ty] += X[Row * size + Col] * intermediate_shared[tx];
-
-			__syncthreads();
 		}
+		__syncthreads();
 	}
 	if (tx == 0)
 	{
@@ -53,6 +52,7 @@ __global__ void externalKernel(float * weights, float *grad_weights, float *X, f
 			values[tx][ty] += values[tx + q][ty];
 		}
 		grad_weights[ty] = values[tx][ty];
+		//printf("Updating weight %f %d",grad_weights[ty], ty);
 		weights[ty] -= learning_rate*grad_weights[ty];	
 	}
 }
@@ -72,4 +72,37 @@ __global__ void uncoalescedKernel(float *weights, float *X, float *y, float *int
 		value -= y[index];
 		intermediate_vector[index] = value;
 	}
+}
+
+
+__global__ void evaluate_model(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features, float * correct_val)
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	int stride = 0;
+	float value = 0;
+	//Start needs to be verified
+	int start = index;
+	//int start = index * num_features;
+	if (start < N)
+	{
+		for (int i = 0; i < num_features; i++)
+		{
+			value += weights[i] * X[start + stride];
+			stride += size;
+		}
+		value = exp(value) / (1 + exp(value));
+		float y_pred;
+		if(value>0.5)
+			y_pred = 1.0f;
+		else
+			y_pred = 0.0f;
+		if(y_pred == y[index])
+			atomicAdd(correct_val,1);
+	}
+}
+
+
+__global__ void printKernel(float * weights,int num_features){
+	for(int i=0;i<num_features;i++)
+		printf("%f",weights[i]);
 }

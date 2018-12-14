@@ -75,7 +75,7 @@ HIGGSItem HIGGSDataset::getNextBatch(bool transposed)
         if (count >= batch_size)
             break;
     }
-    std::cout << item.size << " " << xindex << endl;
+    //std::cout << item.size << " " << xindex << endl;
     if (transposed)
         assert(xindex <= 2 * item.size + 1);
     item.N = yindex;
