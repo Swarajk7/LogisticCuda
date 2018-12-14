@@ -87,6 +87,7 @@ void GPUClassificationModel::setData(HIGGSItem item)
 		printf("Data size mismatch");
 		return;
 	}
+	N = item.N;
 	SetDeviceArrayValues(X, item.X, batch_size * num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
 }
