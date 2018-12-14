@@ -6,6 +6,14 @@
 #include "gpu_data_handling.h"
 #include "logistic_regression_kernels.cu"
 
+#include "support.h"
+#include <cuda.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <ctime>
+#include <sys/stat.h>
+#include <sys/mman.h>
+
 // Allocate a device memory of num_elements float elements
 float * AllocateDeviceArray(int num_elements)
 {
@@ -153,4 +161,104 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 
 void GPUClassificationModel::printWeights(){	
 	printKernel<<<dim3(1,1),dim3(1,1)>>>(X,num_features);
+}
+
+
+
+void dbl_buffer()
+{
+
+//static const size_t host_buffer_size = 512 * 1024;
+int main(int argc, char *argv[])
+{
+    int fd = -1;
+    static const size_t host_buffer_size = 1024 * 1024;
+    struct stat file_stat;
+    cudaError_t cuda_ret;
+    cudaStream_t cuda_stream;
+    cudaEvent_t tmp_event,active_event, passive_event;
+    void *host_buffer, *device_buffer, *active, *passive, *tmp, *current;
+    size_t pending, transfer_size;
+
+//    Timer timer;
+  //  timestamp_t start_time, end_time;
+    float bw;
+clock_t start_time,end_time;
+        double total_time;	
+	srand(2012);
+
+    if(argc < 2) FATAL("Bad argument count");
+    /* Open the file */
+    if((fd = open(argv[1], O_RDONLY)) < 0)
+        FATAL("Unable to open %s", argv[1]);
+
+    if(fstat(fd, &file_stat) < 0)
+        FATAL("Unable to read meta data for %s", argv[1]);
+    /* Create CUDA stream for asynchronous copies */
+   
+     cuda_ret = cudaStreamCreate(&cuda_stream);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA stream");
+    /* Create CUDA events */
+    cuda_ret = cudaEventCreate(&active_event);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA event");
+    cuda_ret = cudaEventCreate(&passive_event);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA event");
+    /* Allocate a big chunk of host pinned memory */
+    cuda_ret = cudaHostAlloc(&host_buffer, 2 * host_buffer_size,cudaHostAllocDefault);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to allocate host memory");
+    cuda_ret = cudaMalloc(&device_buffer, file_stat.st_size);
+    if(cuda_ret != cudaSuccess) 
+        FATAL("Unable to allocate device memory");
+
+/* Start transferring */
+ //   start_time = get_timestamp();
+ //    startTime(&timer); 
+   start_time = std::clock();
+    /* Queue dummy first event */
+    cuda_ret =  cudaEventRecord(active_event, cuda_stream);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to queue CUDA event");
+   
+    active = host_buffer; 
+    passive = (uint8_t *)host_buffer + host_buffer_size;
+    current = device_buffer; pending = file_stat.st_size;
+	/* Start the copy machine */
+    while(pending > 0) {
+        /* Make sure CUDA is not using the buffer */
+        cuda_ret = cudaEventSynchronize(active_event);
+        if(cuda_ret != cudaSuccess) FATAL("Unable to wait for event");
+        transfer_size = (pending > host_buffer_size) ? host_buffer_size : pending;
+        if(read(fd, active, transfer_size) < transfer_size)
+            FATAL("Unable to read data from %s", argv[1]);
+
+/* Send data to the device asynchronously */
+        cuda_ret = cudaMemcpyAsync(current, active, transfer_size,cudaMemcpyHostToDevice, cuda_stream);
+        if(cuda_ret != cudaSuccess)
+            FATAL("Unable to copy data to device memory");
+        /* Record event to know when the buffer is idle */
+        cuda_ret = cudaEventRecord(active_event, cuda_stream);
+        if(cuda_ret != cudaSuccess) FATAL("Unable to queue CUDA event");
+        /* Update counters and buffers */
+        pending = pending - transfer_size;
+        current = (uint8_t *) current + transfer_size;
+        tmp = active; active = passive; passive = tmp;
+        tmp_event = active_event; active_event = passive_event;
+        passive_event = tmp_event;
+    } 
+   
+    cuda_ret = cudaStreamSynchronize(cuda_stream);
+    if(cuda_ret != cudaSuccess) FATAL("Unable to wait for device");
+    end_time = std::clock();
+    total_time = (end_time - start_time)/(double)CLOCKS_PER_SEC; 
+   printf("%f s\n", total_time);   
+
+  bw = 1.0f * file_stat.st_size / (total_time);
+   fprintf(stdout, "%d bytes in %f msec : %f MBps\n", file_stat.st_size,1e-3f * total_time, bw);
+    cuda_ret = cudaFree(device_buffer);
+   if(cuda_ret != cudaSuccess) FATAL("Unable to free device memory");
+   cuda_ret = cudaFreeHost(host_buffer);
+   if(cuda_ret != cudaSuccess) FATAL("Unable to free host memory");
+   close(fd);
+ return 0;
+}
+
 }
