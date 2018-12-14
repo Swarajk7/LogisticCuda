@@ -21,6 +21,6 @@ class GPUClassificationModel
 	GPUClassificationModel(HIGGSItem item, int num_features = 28, bool random = false);
 	void resetWeights(bool random = false);
 	void setData(HIGGSItem item);
-	void evaluateModel();
-	void trainModel(bool memory_coalescing,float learning_rate);
+	void evaluateModel(HIGGSItem item, bool memory_coalescing);
+	void trainModel(HIGGSItem item,bool memory_coalescing,float learning_rate);
 };

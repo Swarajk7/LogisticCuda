@@ -70,9 +70,9 @@ int main(int argc, char *argv[])
 			*/
 			++batch_no;
 			HIGGSItem batch = dataset.getNextBatch(true);
-			model.setData(batch);
+			//model.setData(batch);
 			if (batch.N == batch_size)
-				model.trainModel(true);
+				model.trainModel(batch,true,0.001);
 			total += batch.N;
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;

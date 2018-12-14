@@ -105,7 +105,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 	//trainingKernel(weights,X,y,memory_coalescing);
 	setData(item);
 
-	this.learning_rate = learning_rate
+	this->learning_rate = learning_rate;
 
 	printf("Running trainmodel()\n");
 
