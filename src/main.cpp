@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 			HIGGSItem batch = dataset.getNextBatch(true);
 			//model.setData(batch);
 			if (batch.N == batch_size)
-				model.trainModel(batch,true,0.0001);
+				model.trainModel(batch,true,3,0.0001);
 			total += batch.N;
 			if(batch_no ==1) {
 				//for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
