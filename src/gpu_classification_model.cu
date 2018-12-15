@@ -19,7 +19,15 @@ float * AllocateDeviceArray(int num_elements)
 {
 	float * devArray;
 	int size = num_elements * sizeof(float);
-	cudaMalloc((void **)&devArray, size);
+	cudaError_t error = cudaMalloc((void **)&devArray, size);
+	// if(error == cudaSuccess)
+	// 	printf("AllocateDeviceArray -- 1\n");
+	// else if(error ==cudaErrorInvalidValue)
+	// 	printf("AllocateDeviceArray -- 2\n");
+	// else if(error ==cudaErrorInvalidDevicePointer)
+	// 	printf("AllocateDeviceArray -- 3\n");
+	// else if(error ==cudaErrorInvalidMemcpyDirection)
+	// 	printf("AllocateDeviceArray -- 4\n");
 	return devArray;
 }
 
@@ -30,8 +38,16 @@ void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 	{
 		//Initialize value to some random int. Use Khadanga's function here
 		float *hostArray = generate_random_weight(num_elements);
-		cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
-		
+		//printf("%d",num_elements);
+		cudaError_t error = cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
+		// if(error == cudaSuccess)
+		// 	printf("InitailizeDeviceArrayValues  - 1\n");
+		// else if(error ==cudaErrorInvalidValue)
+		// 	printf("InitailizeDeviceArrayValues  - 2\n");
+		// else if(error ==cudaErrorInvalidDevicePointer)
+		// 	printf("InitailizeDeviceArrayValues  - 3\n");
+		// else if(error ==cudaErrorInvalidMemcpyDirection)
+		// 	printf("InitailizeDeviceArrayValues  - 4\n");			
 	}
 	else
 	{
@@ -43,16 +59,16 @@ void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 void GPUClassificationModel::SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements)
 {
 	int size = num_elements * sizeof(float);
-	printf("%d  ",size);
+	//printf("%d  ",size);
 	cudaError_t error = cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
-	if(error == cudaSuccess)
-		printf("1\n");
-	else if(error ==cudaErrorInvalidValue)
-		printf("2\n");
-	else if(error ==cudaErrorInvalidDevicePointer)
-		printf("3\n");
-	else if(error ==cudaErrorInvalidMemcpyDirection)
-		printf("4\n");
+	// if(error == cudaSuccess)
+	// 	printf("SetDeviceArrayValues  - 1\n");
+	// else if(error ==cudaErrorInvalidValue)
+	// 	printf("SetDeviceArrayValues  - 2\n");
+	// else if(error ==cudaErrorInvalidDevicePointer)
+	// 	printf("SetDeviceArrayValues  - 3\n");
+	// else if(error ==cudaErrorInvalidMemcpyDirection)
+	// 	printf("SetDeviceArrayValues  - 4\n");
 	
 	// for(int i=0;i<29;i++) printf("%f ",hostArray[i]);
 	// printf("\n");
@@ -73,10 +89,10 @@ GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features,
 	this->num_features = num_features + 1;
 	initializeWeights(random);
 
-	grad_weights = AllocateDeviceArray(num_features);
+	grad_weights = AllocateDeviceArray(this->num_features);
 	intermediate_vector = AllocateDeviceArray(batch_size);
 
-	X = AllocateDeviceArray(batch_size * num_features);
+	X = AllocateDeviceArray(batch_size * this->num_features);
 	y = AllocateDeviceArray(batch_size);
 	correct_val = AllocateDeviceArray(1);
 	cudaMemset(correct_val, 0, sizeof(float));
@@ -87,17 +103,17 @@ GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features,
 	batch_size = item.size;
 	N = item.N;
 	//Taking care of the weight for bias by adding 1
-	num_features = num_features + 1;
+	this->num_features = num_features + 1;
 	initializeWeights(random);
 
-	grad_weights = AllocateDeviceArray(num_features);
+	grad_weights = AllocateDeviceArray(this->num_features);
 	intermediate_vector = AllocateDeviceArray(batch_size);
 
-	X = AllocateDeviceArray(batch_size * num_features);
+	X = AllocateDeviceArray(batch_size * this->num_features);
 	y = AllocateDeviceArray(batch_size);
 	correct_val = AllocateDeviceArray(1);
 	cudaMemset(correct_val, 0, sizeof(float));
-	SetDeviceArrayValues(X, item.X, batch_size * num_features);
+	SetDeviceArrayValues(X, item.X, batch_size * this->num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
 }
 
@@ -114,11 +130,12 @@ void GPUClassificationModel::setData(HIGGSItem item)
 		return;
 	}
 	N = item.N;
-	SetDeviceArrayValues(X, item.X, batch_size * num_features);
+	SetDeviceArrayValues(X, item.X, batch_size*num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
-	// for(int i=0;i<29;i++) printf("%f ",item.X[i]);
-	// printf("\n");
-	// printWeights();
+	//for(int i=0;i<29;i++) printf("%f ",item.y[i]);
+	//printf("\n");
+	//printGpuData(X);
+	//printf("%d",num_features);
 }
 
 float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalescing)
@@ -177,11 +194,16 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 }
 
 void GPUClassificationModel::printWeights(){	
-	printKernel<<<dim3(1,1),dim3(1,1)>>>(X,num_features);
+	printKernel<<<dim3(1,1),dim3(1,1)>>>(weights,intermediate_vector,num_features);
+}
+
+
+void GPUClassificationModel::printIntermediateValue(){	
+	printKernel<<<dim3(1,1),dim3(1,1)>>>(weights,intermediate_vector,num_features);
 }
 
 void GPUClassificationModel::printGpuData(float * array){	
-	printKernel<<<dim3(1,1),dim3(1,1)>>>(array,num_features);
+	printKernel<<<dim3(1,1),dim3(1,1)>>>(array,intermediate_vector,num_features);
 }
 
 

@@ -27,6 +27,7 @@ class GPUClassificationModel
 	float evaluateModel(HIGGSItem item, bool memory_coalescing);
 	void trainModel(HIGGSItem item,bool memory_coalescing,float learning_rate);
 	void printWeights();
+	void printIntermediateValue();
 	void printGpuData(float * array);
 	void SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements);
 };

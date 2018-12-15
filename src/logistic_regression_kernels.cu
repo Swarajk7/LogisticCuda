@@ -19,7 +19,8 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 			value += weights[i] * X[start + stride];
 			stride += size;
 		}
-		value = exp(value) / (1 + exp(value));
+		value = 1 / (1 + expf(-value));
+		//value = exp(value) / (1 + exp(value));
 		value -= y[index];
 		intermediate_vector[index] = value;
 	}
@@ -31,6 +32,9 @@ __global__ void externalKernel(float * weights, float *grad_weights, float *X, f
 	__shared__ float intermediate_shared[32];
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
+
+	values[tx][ty] = 0.0f;
+	__syncthreads();
 	for (int m = 0; m < ceilf((N * 1.0f) / X_dim); m++)
 	{
 		int Col = tx + m * X_dim;
@@ -53,7 +57,7 @@ __global__ void externalKernel(float * weights, float *grad_weights, float *X, f
 		}
 		grad_weights[ty] = values[tx][ty];
 		//printf("Updating weight %f %d",grad_weights[ty], ty);
-		weights[ty] -= learning_rate*grad_weights[ty];	
+		weights[ty] -= ((learning_rate*grad_weights[ty])/N);	
 	}
 }
 
@@ -90,7 +94,7 @@ __global__ void evaluate_model(float *weights, float *X, float *y, float *interm
 			value += weights[i] * X[start + stride];
 			stride += size;
 		}
-		value = exp(value) / (1 + exp(value));
+		value = 1 / (1 + expf(-value));
 		float y_pred;
 		if(value>0.5)
 			y_pred = 1.0f;
@@ -102,7 +106,12 @@ __global__ void evaluate_model(float *weights, float *X, float *y, float *interm
 }
 
 
-__global__ void printKernel(float * weights,int num_features){
+__global__ void printKernel(float * weights,float * inter_vector,int num_features){
+	printf("WEIGHTS\n");
 	for(int i=0;i<num_features;i++)
-		printf("%f",weights[i]);
+		printf("%f ",weights[i]);
+
+	printf("Inter Values\n");
+	for(int i=0;i<num_features;i++)
+		printf("%f ",inter_vector[i]);
 }

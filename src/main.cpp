@@ -2,6 +2,9 @@
 #include "data_reader.h"
 #include "logistic.h"
 #include "gpu_data_handling.h"
+#include <cuda.h>
+#include <unistd.h>
+
 int main(int argc, char *argv[])
 {
 	// HIGGSDataset dataset("./data/sample.csv", 10);
@@ -58,7 +61,7 @@ int main(int argc, char *argv[])
 	// 	std::cout << classifier.evaluate(valdataset) << endl;
 	// }
 
-	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, false);
+	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
 	//model.printWeights();
 
 
@@ -73,10 +76,10 @@ int main(int argc, char *argv[])
 			2. compute accuracy for validation set
 			*/
 			++batch_no;
-			HIGGSItem batch = dataset.getNextBatch(false);
+			HIGGSItem batch = dataset.getNextBatch(true);
 			//model.setData(batch);
 			if (batch.N == batch_size)
-				model.trainModel(batch,true,0.001);
+				model.trainModel(batch,true,0.0001);
 			total += batch.N;
 			if(batch_no ==1) {
 				//for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
@@ -85,6 +88,14 @@ int main(int argc, char *argv[])
 			}
 			free(batch.X);
 			free(batch.y);
+			//printf("WEIGHTS: \n");
+			//model.printWeights();
+
+			//cudaDeviceSynchronize();
+			//usleep(3000);
+
+			//printf("Intermediate: \n");
+			//model.printIntermediateValue();
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
 		//model.printWeights();
