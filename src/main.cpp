@@ -77,10 +77,12 @@ int main(int argc, char *argv[])
 				model.trainModel(batch,true,0.001);
 			total += batch.N;
 			if(batch_no ==1) {
-				for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
+				//for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
 				printf("\n");
-				model.printWeights();
+				//model.printWeights();
 			}
+			free(batch.X);
+			free(batch.y);
 		}
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
 		//model.printWeights();
@@ -93,6 +95,8 @@ int main(int argc, char *argv[])
 			HIGGSItem item = valdataset.getNextBatch(true);
 			total += item.N;
 			corr+=model.evaluateModel(item,true);
+			free(item.X);
+			free(item.y);
 		}
 		std::cout << corr/total << std::endl;
 	}

@@ -23,6 +23,7 @@ void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 		//Initialize value to some random int. Use Khadanga's function here
 		float *hostArray = generate_random_weight(num_elements);
 		cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
+		
 	}
 	else
 	{
@@ -31,10 +32,23 @@ void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 	}
 }
 
-void SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements)
+void GPUClassificationModel::SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements)
 {
 	int size = num_elements * sizeof(float);
-	cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
+	printf("%d  ",size);
+	cudaError_t error = cudaMemcpy(devArray, hostArray, size, cudaMemcpyHostToDevice);
+	if(error == cudaSuccess)
+		printf("1\n");
+	else if(error ==cudaErrorInvalidValue)
+		printf("2\n");
+	else if(error ==cudaErrorInvalidDevicePointer)
+		printf("3\n");
+	else if(error ==cudaErrorInvalidMemcpyDirection)
+		printf("4\n");
+	
+	// for(int i=0;i<29;i++) printf("%f ",hostArray[i]);
+	// printf("\n");
+	// printGpuData(devArray);
 }
 
 //Keeping a preTrained flag right now for future use of preTrained weights as well.
@@ -94,6 +108,9 @@ void GPUClassificationModel::setData(HIGGSItem item)
 	N = item.N;
 	SetDeviceArrayValues(X, item.X, batch_size * num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
+	// for(int i=0;i<29;i++) printf("%f ",item.X[i]);
+	// printf("\n");
+	// printWeights();
 }
 
 float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalescing)
@@ -153,4 +170,8 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 
 void GPUClassificationModel::printWeights(){	
 	printKernel<<<dim3(1,1),dim3(1,1)>>>(X,num_features);
+}
+
+void GPUClassificationModel::printGpuData(float * array){	
+	printKernel<<<dim3(1,1),dim3(1,1)>>>(array,num_features);
 }
