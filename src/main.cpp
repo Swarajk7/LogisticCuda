@@ -3,10 +3,14 @@
 #include "logistic.h"
 #include "gpu_data_handling.h"
 #include <cuda.h>
+#include <ctime>
 #include <unistd.h>
 
 int main(int argc, char *argv[])
 {
+	clock_t start_time, end_time;
+	double total_train_time = 0, total_evaluation_time = 0;
+	double total_cpu_train_time = 0;
 	// HIGGSDataset dataset("./data/sample.csv", 10);
 	// HIGGSItem item = dataset.getNextBatch(false);
 	// ofstream writer;
@@ -30,40 +34,16 @@ int main(int argc, char *argv[])
 		batch_size = stoi(argv[1]);
 		std::cout << "Batch Size: " << batch_size << endl;
 	}
+	HIGGSItem *batch = new HIGGSItem();
+	batch->allocateMemory(batch_size);
 	HIGGSDataset dataset("./data/HIGGS_Sample.csv", batch_size);
 	LogisticRegression classifier(HIGGSDataset::NUMBER_OF_FEATURE);
 	int batch_no = 0;
 
-//Added by anand
-    dbl_buffer(2,"./data/HIGGS_Sample.csv");
+	//Added by anand
+	dbl_buffer(dataset, batch_size, "./data/HIGGS_Sample.csv");
 	HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
 	// std::cout << classifier.evaluate(valdataset);
-
-	// for (int i = 0; i < 10; i++)
-	// {
-	// 	int correct = 0, total = 0;
-	// 	dataset.reset();
-	// 	while (dataset.hasNext())
-	// 	{
-	// 		/*
-	// 		1. train logistic
-	// 		2. compute accuracy for validation set
-	// 		*/
-	// 		++batch_no;
-	// 		HIGGSItem batch = dataset.getNextBatch(false);
-	// 		if (batch.N == batch_size)
-	// 			correct += classifier.trainBatch(batch, 0.0001);
-	// 		total += batch.N;
-	// 	}
-	// 	std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
-	// 	std::cout << "Evaluating! Accuracy: ";
-	// 	valdataset.reset();
-	// 	std::cout << classifier.evaluate(valdataset) << endl;
-	// }
-
-	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
-	//model.printWeights();
-
 
 	for (int i = 0; i < 10; i++)
 	{
@@ -76,18 +56,52 @@ int main(int argc, char *argv[])
 			2. compute accuracy for validation set
 			*/
 			++batch_no;
-			HIGGSItem batch = dataset.getNextBatch(true);
+			dataset.getNextBatch(false, batch);
+			if (batch->N == batch_size)
+			{
+				start_time = std::clock();
+				correct += classifier.trainBatch(*batch, 0.0001);
+				end_time = std::clock();
+				total_cpu_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
+			}
+			total += batch->N;
+		}
+		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
+		std::cout << "Evaluating! Accuracy: ";
+		valdataset.reset();
+		//std::cout << classifier.evaluate(valdataset) << endl;
+	}
+
+	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
+	//model.printWeights();
+
+	for (int i = 0; i < 10; i++)
+	{
+		int correct = 0, total = 0;
+		dataset.reset();
+		while (dataset.hasNext())
+		{
+			/*
+			1. train logistic
+			2. compute accuracy for validation set
+			*/
+			++batch_no;
+			dataset.getNextBatch(true, batch);
 			//model.setData(batch);
-			if (batch.N == batch_size)
-				model.trainModel(batch,true,0.0001);
-			total += batch.N;
-			if(batch_no ==1) {
+			if (batch->N == batch_size)
+			{
+				start_time = std::clock();
+				model.trainModel(*batch, true, 0.0001);
+				end_time = std::clock();
+				total_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
+			}
+			total += batch->N;
+			if (batch_no == 1)
+			{
 				//for(int i=0;i<29;i++) printf("%f ",batch.X[i]);
 				printf("\n");
 				//model.printWeights();
 			}
-			free(batch.X);
-			free(batch.y);
 			//printf("WEIGHTS: \n");
 			//model.printWeights();
 
@@ -101,16 +115,21 @@ int main(int argc, char *argv[])
 		//model.printWeights();
 		std::cout << "Evaluating! Accuracy: ";
 		valdataset.reset();
-		
+
 		total = 0;
-		float corr=0;
-		while(valdataset.hasNext()) {
-			HIGGSItem item = valdataset.getNextBatch(true);
-			total += item.N;
-			corr+=model.evaluateModel(item,true);
-			free(item.X);
-			free(item.y);
+		float corr = 0;
+		while (valdataset.hasNext())
+		{
+			valdataset.getNextBatch(true, batch);
+			total += batch->N;
+			start_time = std::clock();
+			corr += model.evaluateModel(*batch, true);
+			end_time = std::clock();
+			total_evaluation_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
 		}
-		std::cout << corr/total << std::endl;
+		std::cout << corr / total << std::endl;
 	}
+
+	std::cout << "\n **** Total CPU Train Time: " << total_cpu_train_time << endl;
+	std::cout << "\n***\n Total Train Time: " << total_train_time << "\n Total Evaluation Time: " << total_evaluation_time << endl;
 }

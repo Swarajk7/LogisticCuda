@@ -26,7 +26,7 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 	}
 }
 
-__global__ void externalKernel(float * weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, const int X_dim, float learning_rate)
+__global__ void externalKernel(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, const int X_dim, float learning_rate)
 {
 	__shared__ float values[32][29];
 	__shared__ float intermediate_shared[32];
@@ -57,7 +57,7 @@ __global__ void externalKernel(float * weights, float *grad_weights, float *X, f
 		}
 		grad_weights[ty] = values[tx][ty];
 		//printf("Updating weight %f %d",grad_weights[ty], ty);
-		weights[ty] -= ((learning_rate*grad_weights[ty])/N);	
+		weights[ty] -= ((learning_rate * grad_weights[ty]) / N);
 	}
 }
 
@@ -78,8 +78,7 @@ __global__ void uncoalescedKernel(float *weights, float *X, float *y, float *int
 	}
 }
 
-
-__global__ void evaluate_model(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features, float * correct_val)
+__global__ void evaluate_model(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features, float *correct_val)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	int stride = 0;
@@ -96,22 +95,22 @@ __global__ void evaluate_model(float *weights, float *X, float *y, float *interm
 		}
 		value = 1 / (1 + expf(-value));
 		float y_pred;
-		if(value>0.5)
+		if (value > 0.5)
 			y_pred = 1.0f;
 		else
 			y_pred = 0.0f;
-		if(y_pred == y[index])
-			atomicAdd(correct_val,1);
+		if (y_pred == y[index])
+			atomicAdd(correct_val, 1);
 	}
 }
 
-
-__global__ void printKernel(float * weights,float * inter_vector,int num_features){
+__global__ void printKernel(float *weights, float *inter_vector, int num_features)
+{
 	printf("WEIGHTS\n");
-	for(int i=0;i<num_features;i++)
-		printf("%f ",weights[i]);
+	for (int i = 0; i < num_features; i++)
+		printf("%f ", weights[i]);
 
 	printf("Inter Values\n");
-	for(int i=0;i<num_features;i++)
-		printf("%f ",inter_vector[i]);
+	for (int i = 0; i < num_features; i++)
+		printf("%f ", inter_vector[i]);
 }

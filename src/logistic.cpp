@@ -54,7 +54,7 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
 
 float LogisticRegression::evaluate(HIGGSDataset &validationSet)
 {
-    float correct = 0, total = 0;
+    /*float correct = 0, total = 0;
     float mul = 0.0f;
     for (int j = 0; j < num_features + 1; j++)
     {
@@ -80,5 +80,6 @@ float LogisticRegression::evaluate(HIGGSDataset &validationSet)
             total++;
         }
     }
-    return correct / total;
+    return correct / total;*/
+    return 0.0f;
 }

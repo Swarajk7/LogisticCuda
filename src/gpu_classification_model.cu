@@ -5,6 +5,7 @@
 #include "utils.h"
 #include "gpu_data_handling.h"
 #include "logistic_regression_kernels.cu"
+#include "data_reader.h"
 
 #include "support.h"
 #include <cuda.h>
@@ -15,9 +16,9 @@
 #include <sys/mman.h>
 
 // Allocate a device memory of num_elements float elements
-float * AllocateDeviceArray(int num_elements)
+float *AllocateDeviceArray(int num_elements)
 {
-	float * devArray;
+	float *devArray;
 	int size = num_elements * sizeof(float);
 	cudaError_t error = cudaMalloc((void **)&devArray, size);
 	// if(error == cudaSuccess)
@@ -47,7 +48,7 @@ void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 		// else if(error ==cudaErrorInvalidDevicePointer)
 		// 	printf("InitailizeDeviceArrayValues  - 3\n");
 		// else if(error ==cudaErrorInvalidMemcpyDirection)
-		// 	printf("InitailizeDeviceArrayValues  - 4\n");			
+		// 	printf("InitailizeDeviceArrayValues  - 4\n");
 	}
 	else
 	{
@@ -69,7 +70,7 @@ void GPUClassificationModel::SetDeviceArrayValues(float *devArray, float *hostAr
 	// 	printf("SetDeviceArrayValues  - 3\n");
 	// else if(error ==cudaErrorInvalidMemcpyDirection)
 	// 	printf("SetDeviceArrayValues  - 4\n");
-	
+
 	// for(int i=0;i<29;i++) printf("%f ",hostArray[i]);
 	// printf("\n");
 	// printGpuData(devArray);
@@ -130,7 +131,7 @@ void GPUClassificationModel::setData(HIGGSItem item)
 		return;
 	}
 	N = item.N;
-	SetDeviceArrayValues(X, item.X, batch_size*num_features);
+	SetDeviceArrayValues(X, item.X, batch_size * num_features);
 	SetDeviceArrayValues(y, item.y, batch_size);
 	//for(int i=0;i<29;i++) printf("%f ",item.y[i]);
 	//printf("\n");
@@ -147,13 +148,13 @@ float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalesci
 
 	dim3 GridSize(num_blocks, 1, 1);
 	dim3 BlockSize(num_threads_p_block, 1, 1);
-	evaluate_model<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features,correct_val);
-	float * host_correct_val = (float *)malloc(sizeof(float));
-	cudaMemcpy(host_correct_val,correct_val,sizeof(float),cudaMemcpyDeviceToHost);
+	evaluate_model<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features, correct_val);
+	float *host_correct_val = (float *)malloc(sizeof(float));
+	cudaMemcpy(host_correct_val, correct_val, sizeof(float), cudaMemcpyDeviceToHost);
 	return *host_correct_val;
 }
 
-void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,float learning_rate)
+void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
@@ -174,7 +175,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 	if (memory_coalescing)
 	{
 		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 		//Subtract W with GradWeights
 		// for (int i = 0; i < num_features; i++)
 		// {
@@ -193,116 +194,166 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,f
 	}
 }
 
-void GPUClassificationModel::printWeights(){	
-	printKernel<<<dim3(1,1),dim3(1,1)>>>(weights,intermediate_vector,num_features);
-}
-
-
-void GPUClassificationModel::printIntermediateValue(){	
-	printKernel<<<dim3(1,1),dim3(1,1)>>>(weights,intermediate_vector,num_features);
-}
-
-void GPUClassificationModel::printGpuData(float * array){	
-	printKernel<<<dim3(1,1),dim3(1,1)>>>(array,intermediate_vector,num_features);
-}
-
-
-void dbl_buffer(int num,const char* file_name)
+void GPUClassificationModel::printWeights()
 {
+	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(weights, intermediate_vector, num_features);
+}
 
-//static const size_t host_buffer_size = 512 * 1024;
-//int main(int argc, char *argv[])
-//{
-    int fd = -1;
-    static const size_t host_buffer_size = 1024 * 1024;
-    struct stat file_stat;
-    cudaError_t cuda_ret;
-    cudaStream_t cuda_stream;
-    cudaEvent_t tmp_event,active_event, passive_event;
-    void *host_buffer, *device_buffer, *active, *passive, *tmp, *current;
-    size_t pending, transfer_size;
+void GPUClassificationModel::printIntermediateValue()
+{
+	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(weights, intermediate_vector, num_features);
+}
 
-//    Timer timer;
-  //  timestamp_t start_time, end_time;
-    float bw;
-clock_t start_time,end_time;
-        double total_time;	
-	srand(2012);
+void GPUClassificationModel::printGpuData(float *array)
+{
+	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(array, intermediate_vector, num_features);
+}
 
-    if(num < 2) FATAL("Bad argument count");
-    /* Open the file */
-    if((fd = open(file_name, O_RDONLY)) < 0)
-        FATAL("Unable to open %s", file_name);
+void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
+{
+	dataset.reset();
+	//static const size_t host_buffer_size = 512 * 1024;
+	int fd = -1;
+	static const size_t host_buffer_size_X = batch_size * (HIGGSDataset::NUMBER_OF_FEATURE + 1) * sizeof(float);
+	static const size_t host_buffer_size_y = batch_size * sizeof(float);
+	struct stat file_stat;
+	cudaError_t cuda_ret;
+	cudaStream_t cuda_stream;
+	cudaEvent_t tmp_event, active_event, passive_event;
+	HIGGSItem *active, *passive, *tmp;
+	//HIGGSItem *host_buffer = new HIGGSItem(); // X,y
 
-    if(fstat(fd, &file_stat) < 0)
-        FATAL("Unable to read meta data for %s", file_name);
-    /* Create CUDA stream for asynchronous copies */
-   
-     cuda_ret = cudaStreamCreate(&cuda_stream);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA stream");
-    /* Create CUDA events */
-    cuda_ret = cudaEventCreate(&active_event);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA event");
-    cuda_ret = cudaEventCreate(&passive_event);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to create CUDA event");
-    /* Allocate a big chunk of host pinned memory */
-    cuda_ret = cudaHostAlloc(&host_buffer, 2 * host_buffer_size,cudaHostAllocDefault);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to allocate host memory");
-    cuda_ret = cudaMalloc(&device_buffer, file_stat.st_size);
-    if(cuda_ret != cudaSuccess) 
-        FATAL("Unable to allocate device memory");
+	float *host_buffer_X, *host_buffer_y;
+	float *current_X, *current_y;
 
-/* Start transferring */
- //   start_time = get_timestamp();
- //    startTime(&timer); 
-   start_time = std::clock();
-    /* Queue dummy first event */
-    cuda_ret =  cudaEventRecord(active_event, cuda_stream);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to queue CUDA event");
-   
-    active = host_buffer; 
-    passive = (uint8_t *)host_buffer + host_buffer_size;
-    current = device_buffer; pending = file_stat.st_size;
+	active = new HIGGSItem();
+	active->size = batch_size;
+
+	passive = new HIGGSItem();
+	passive->size = batch_size;
+
+	tmp = new HIGGSItem();
+
+	float *device_buffer_X, *device_buffer_y;
+	size_t pending, transfer_size;
+
+	float bw;
+	clock_t start_time, end_time;
+	double total_time;
+
+	/* Open the file */
+	if ((fd = open(file_name, O_RDONLY)) < 0)
+		FATAL("Unable to open %s", file_name);
+
+	if (fstat(fd, &file_stat) < 0)
+		FATAL("Unable to read meta data for %s", file_name);
+	/* Create CUDA stream for asynchronous copies */
+
+	cuda_ret = cudaStreamCreate(&cuda_stream);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to create CUDA stream");
+	/* Create CUDA events */
+	cuda_ret = cudaEventCreate(&active_event);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to create CUDA event");
+	cuda_ret = cudaEventCreate(&passive_event);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to create CUDA event");
+	/* Allocate a big chunk of host pinned memory */
+	cuda_ret = cudaHostAlloc(&host_buffer_X, 2 * host_buffer_size_X, cudaHostAllocDefault);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to allocate host X memory");
+	cuda_ret = cudaHostAlloc(&host_buffer_y, 2 * host_buffer_size_y, cudaHostAllocDefault);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to allocate host y memory");
+	// TODO: check file stat
+	cuda_ret = cudaMalloc(&device_buffer_X, file_stat.st_size);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to allocate device memory");
+	cuda_ret = cudaMalloc(&device_buffer_y, file_stat.st_size);
+
+	/* Start transferring */
+	start_time = std::clock();
+	/* Queue dummy first event */
+	cuda_ret = cudaEventRecord(active_event, cuda_stream);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to queue CUDA event");
+
+	active->X = host_buffer_X;
+	active->y = host_buffer_y;
+
+	passive->X = host_buffer_X + host_buffer_size_X / sizeof(float);
+	passive->y = host_buffer_y + host_buffer_size_y / sizeof(float);
+
+	current_X = device_buffer_X;
+	current_y = device_buffer_y;
+
+	// TODO: Update file_stat accordingly.
+	//pending = file_stat.st_size;
 	/* Start the copy machine */
-    while(pending > 0) {
-        /* Make sure CUDA is not using the buffer */
-        cuda_ret = cudaEventSynchronize(active_event);
-        if(cuda_ret != cudaSuccess) FATAL("Unable to wait for event");
-        transfer_size = (pending > host_buffer_size) ? host_buffer_size : pending;
-        if(read(fd, active, transfer_size) < transfer_size)
-            FATAL("Unable to read data from %s", file_name);
+	while (dataset.hasNext())
+	{
+		/* Make sure CUDA is not using the buffer */
+		cuda_ret = cudaEventSynchronize(active_event);
+		if (cuda_ret != cudaSuccess)
+			FATAL("Unable to wait for event");
+		//transfer_size = (pending > host_buffer_size_y) ? host_buffer_size_y : pending;
 
-/* Send data to the device asynchronously */
-        cuda_ret = cudaMemcpyAsync(current, active, transfer_size,cudaMemcpyHostToDevice, cuda_stream);
-        if(cuda_ret != cudaSuccess)
-            FATAL("Unable to copy data to device memory");
-        /* Record event to know when the buffer is idle */
-        cuda_ret = cudaEventRecord(active_event, cuda_stream);
-        if(cuda_ret != cudaSuccess) FATAL("Unable to queue CUDA event");
-        /* Update counters and buffers */
-        pending = pending - transfer_size;
-        current = (uint8_t *) current + transfer_size;
-        tmp = active; active = passive; passive = tmp;
-        tmp_event = active_event; active_event = passive_event;
-        passive_event = tmp_event;
-    } 
-   
-    cuda_ret = cudaStreamSynchronize(cuda_stream);
-    if(cuda_ret != cudaSuccess) FATAL("Unable to wait for device");
-    end_time = std::clock();
-    total_time = (end_time - start_time)/(double)CLOCKS_PER_SEC; 
-   printf("%f s\n", total_time);   
+		//Item load using dataset.dataset.read(active);
+		dataset.getNextBatch(true, active);
+		/*if (read(fd, active, transfer_size) < transfer_size)
+			FATAL("Unable to read data from %s", file_name);*/
 
-  bw = 1.0f * file_stat.st_size / (total_time);
-   fprintf(stdout, "%d bytes in %f msec : %f MBps\n", file_stat.st_size,1e-3f * total_time, bw);
-    cuda_ret = cudaFree(device_buffer);
-   if(cuda_ret != cudaSuccess) FATAL("Unable to free device memory");
-   cuda_ret = cudaFreeHost(host_buffer);
-   if(cuda_ret != cudaSuccess) FATAL("Unable to free host memory");
-   close(fd);
+		/* Send data to the device asynchronously */
+		cuda_ret = cudaMemcpyAsync(current_X, active->X, host_buffer_size_X, cudaMemcpyHostToDevice, cuda_stream);
+		if (cuda_ret != cudaSuccess)
+			FATAL("Unable to copy data to device memory");
+		cuda_ret = cudaMemcpyAsync(current_y, active->y, host_buffer_size_y, cudaMemcpyHostToDevice, cuda_stream);
+		if (cuda_ret != cudaSuccess)
+			FATAL("Unable to copy data to device memory");
+		/*
+			Kernel call in the stream. 
+		*/
+		/* Record event to know when the buffer is idle */
+		cuda_ret = cudaEventRecord(active_event, cuda_stream);
+		if (cuda_ret != cudaSuccess)
+			FATAL("Unable to queue CUDA event");
+		/* Update counters and buffers */
+		// TODO: Size check
+		current_X = current_X + batch_size * (HIGGSDataset::NUMBER_OF_FEATURE + 1);
+		current_y = current_y + batch_size;
+		tmp = active;
+		active = passive;
+		passive = tmp;
+		tmp_event = active_event;
+		active_event = passive_event;
+		passive_event = tmp_event;
+	}
 
-   fprintf(stdout,"File Size %d", file_stat.st_size);
-// return 0;
-//}
+	cuda_ret = cudaStreamSynchronize(cuda_stream);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to wait for device");
+	end_time = std::clock();
+	total_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
+	printf("%f s\n", total_time);
 
+	bw = 1.0f * file_stat.st_size / (total_time) / (1024 * 1024);
+	fprintf(stdout, "%d MB in %f sec : %f MBps\n", file_stat.st_size / (1024 * 1024), total_time, bw);
+	printf("Time take by data processing: %f , Total Number of Batch Processed: %f\n",
+		   dataset.total_time_taken, dataset.total_batch_executed);
+	cuda_ret = cudaFree(device_buffer_X);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to free device memory");
+	cuda_ret = cudaFree(device_buffer_y);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to free device memory");
+	cuda_ret = cudaFreeHost(host_buffer_X);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to free host memory");
+	cuda_ret = cudaFreeHost(host_buffer_y);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to free host memory");
+	close(fd);
+
+	fprintf(stdout, "File Size %d", file_stat.st_size);
 }
