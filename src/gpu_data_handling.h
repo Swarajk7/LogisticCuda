@@ -30,3 +30,5 @@ class GPUClassificationModel
 	void printGpuData(float * array);
 	void SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements);
 };
+
+void dbl_buffer(int,const char *);
