@@ -32,7 +32,7 @@ int main(int argc, char *argv[])
 	int batch_no = 0;
 
 //Added by anand
-         dbl_buffer(2,"./data/HIGGS_Sample.csv");
+    dbl_buffer(2,"./data/HIGGS_Sample.csv");
 	HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
 	// std::cout << classifier.evaluate(valdataset);
 
