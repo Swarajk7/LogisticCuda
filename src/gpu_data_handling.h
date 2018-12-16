@@ -18,6 +18,8 @@ class GPUClassificationModel
 	float *intermediate_vector;
 	float *correct_val;
 
+	//__constant__ float constant_weights[29];
+
 	int batch_size;
 	int N;
 	int num_features;
@@ -32,7 +34,8 @@ public:
 	void resetWeights(bool random = false);
 	void setData(HIGGSItem item);
 	float evaluateModel(HIGGSItem item, bool memory_coalescing);
-	void trainModel(HIGGSItem item, bool memory_coalescing, float learning_rate);
+	//void trainModel(HIGGSItem item,bool memory_coalescing,int memory_access_type,float learning_rate);
+	void trainModel(HIGGSItem item,bool memory_coalescing,int memory_access_type,float learning_rate);
 	void printWeights();
 	void printIntermediateValue();
 	void printGpuData(float *array);

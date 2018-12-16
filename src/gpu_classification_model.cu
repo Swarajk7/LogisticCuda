@@ -15,6 +15,9 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
+
+__constant__ float constant_weights[29];
+
 // Allocate a device memory of num_elements float elements
 float *AllocateDeviceArray(int num_elements)
 {
@@ -31,6 +34,7 @@ float *AllocateDeviceArray(int num_elements)
 	// 	printf("AllocateDeviceArray -- 4\n");
 	return devArray;
 }
+
 
 void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 {
@@ -154,11 +158,17 @@ float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalesci
 	return *host_correct_val;
 }
 
-void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, float learning_rate)
+void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,int memory_access_type,float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
 	//trainingKernel(weights,X,y,memory_coalescing);
+
+	// memory_access_type 1 => Global
+	// memory_access_type 2 => shared
+	// memory_access_type 3 or everything else => constant
+	//int memory_access_type = 1;
+
 	setData(item);
 
 	this->learning_rate = learning_rate;
@@ -174,8 +184,33 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 
 	if (memory_coalescing)
 	{
-		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		if(memory_access_type == 1){
+			//Global memory
+			memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		}
+		else if(memory_access_type == 2){
+			//printf("Using shared");
+			//shared memory
+			//BLOCK_SIZE should be greater than 29
+			memory_coalescedKernel_shared<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		}
+		else{
+			//constant memory
+			//printf("Using constant");
+			float * host_weights = (float *)malloc(num_features*sizeof(float));
+			cudaMemcpy(host_weights,weights,num_features*sizeof(float),cudaMemcpyDeviceToHost);
+
+			cudaMemcpyToSymbol(constant_weights,host_weights,num_features*sizeof(float));
+
+			memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
+
+			cudaMemcpy(weights,&constant_weights[0],num_features*sizeof(float),cudaMemcpyDeviceToDevice);
+			
+			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			free(host_weights);
+		}
 	}
 	else
 	{
