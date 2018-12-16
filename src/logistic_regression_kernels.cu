@@ -29,7 +29,7 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 __global__ void computeForward(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
 	__shared__ float data[BLOCK_SIZE];
-	// TODO : Index calculation, works only for untransposed data.
+	// TODO : Index calculation colesced, works only for untransposed data.
 	int index = blockIdx.x * blockDim.x;
 	int tx = threadIdx.x;
 	data[tx] = tx < NUM_FEATURES ? X[index + tx] : 0.0f;
@@ -132,6 +132,42 @@ __global__ void computeGrad(float *weights, float *grad_weights, float *X, float
 		{
 			atomicAdd(&grad_weights[ty], values[tx][ty]);
 		}
+	}
+}
+
+__global__ void computeGrad_v2(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
+{
+	__shared__ float values[1024];
+
+	int tx = threadIdx.x;
+	int ty = blockIdx.y;
+
+	int col = tx + blockIdx.x * blockDim.x;
+	int row = ty;
+
+	values[tx] = 0.0f;
+	if (col < N)
+	{
+		// TODO: check for memory colescing in a transposed way, may be?
+		values[tx] = X[row * size + col] * intermediate_vector[col];
+	}
+
+	__syncthreads();
+
+	int stride = blockDim.x >> 1;
+	while (stride >= 1)
+	{
+		__syncthreads();
+		if (tx < stride)
+		{
+			values[tx] = values[tx] + values[tx + stride];
+		}
+		stride = stride >> 1;
+	}
+	__syncthreads();
+	if (tx == 0)
+	{
+		atomicAdd(&grad_weights[ty], values[tx]);
 	}
 }
 
