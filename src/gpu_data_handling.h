@@ -44,4 +44,4 @@ public:
 	void trainBatchInStream(float *, float *, int, bool, float, cudaStream_t);
 };
 
-void dbl_buffer(HIGGSDataset &, GPUClassificationModel &, int, const char *);
+void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificationModel &model, int batch_size, const char *file_name, int epoch);

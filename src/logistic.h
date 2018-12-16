@@ -10,6 +10,6 @@ class LogisticRegression
 public:
   LogisticRegression(int NUMFEATURES);
   int trainBatch(HIGGSItem &, float);
-  float evaluate(HIGGSDataset &);
+  float evaluate(HIGGSDataset &, HIGGSItem *);
 };
 #endif

@@ -13,7 +13,8 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
 {
     int xindex = 0;
     int correct = 0;
-
+    if (item.N == 0)
+        return 0;
     // allocate memory to store W.T*X.
     float *result = (float *)malloc(sizeof(float) * item.N);
     grad_weights = generate_zeros(num_features + 1);
@@ -27,23 +28,24 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
         {
             mul += (weights[j] * item.X[xindex + j]);
         }
-        xindex += num_features + 1;
-        int pred = sigmoid(mul) > 0.5f ? 1 : 0;
-        if (pred == (int)item.y[i])
+        float pred = sigmoid(mul) > 0.5f ? 1.0f : 0.0f;
+        if (fabs(pred - item.y[i]) < 0.001f)
             correct++;
         result[i] = sigmoid(mul) - item.y[i];
         // Compute Gradient
         // Reuse result vector, assuming result is not required later. :)
         for (int j = 0; j < num_features + 1; j++)
         {
-            grad_weights[j] += ((result[i] * item.X[j]) / item.N);
+            grad_weights[j] += (result[i] * item.X[xindex + j]);
         }
+        xindex += num_features + 1;
     }
     // Update Gradients after multiplying with learning rate
     float sum = 0.0f;
     for (int i = 0; i < num_features + 1; i++)
     {
-        weights[i] -= (learning_rate * grad_weights[i]);
+        assert(item.N != 0);
+        weights[i] -= (learning_rate * grad_weights[i]) / item.N;
         sum += grad_weights[i];
     }
     //std::cout << "grad sum: " << sum << endl;
@@ -52,9 +54,9 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
     return correct;
 }
 
-float LogisticRegression::evaluate(HIGGSDataset &validationSet)
+float LogisticRegression::evaluate(HIGGSDataset &validationSet, HIGGSItem *batch)
 {
-    /*float correct = 0, total = 0;
+    float correct = 0, total = 0;
     float mul = 0.0f;
     for (int j = 0; j < num_features + 1; j++)
     {
@@ -64,22 +66,22 @@ float LogisticRegression::evaluate(HIGGSDataset &validationSet)
     while (validationSet.hasNext())
     {
         int xindex = 0;
-        HIGGSItem item = validationSet.getNextBatch(false);
+        validationSet.getNextBatch(false, batch);
+        assert(batch->N != 0);
         // Compute sigmoid(W.T*X)
-        for (int i = 0; i < item.N; i++)
+        for (int i = 0; i < batch->N; i++)
         {
             float mul = 0.0f;
             for (int j = 0; j < num_features + 1; j++)
             {
-                mul += weights[j] * item.X[xindex + j];
+                mul += weights[j] * batch->X[xindex + j];
             }
             xindex += num_features + 1;
-            int pred = sigmoid(mul) > 0.5f ? 1 : 0;
-            if (pred == (int)item.y[i])
+            float pred = sigmoid(mul) > 0.5f ? 1.0f : 0.0f;
+            if (fabs(pred - batch->y[i]) < 0.001f)
                 correct++;
             total++;
         }
     }
-    return correct / total;*/
-    return 0.0f;
+    return correct / total;
 }

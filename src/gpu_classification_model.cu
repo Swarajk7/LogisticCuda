@@ -14,6 +14,7 @@
 #include <ctime>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <iostream>
 
 __constant__ float constant_weights[29];
 
@@ -195,7 +196,10 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 			//shared memory
 			//BLOCK_SIZE should be greater than 29
 			memory_coalescedKernel_shared<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			BlockSize.y = NUM_FEATURES;
+			computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
 		}
 		else
 		{
@@ -236,7 +240,7 @@ void GPUClassificationModel::printGpuData(float *array)
 	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(array, intermediate_vector, num_features);
 }
 
-void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_size, const char *file_name)
+void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificationModel &model, int batch_size, const char *file_name, int epoch)
 {
 	dataset.reset();
 	//static const size_t host_buffer_size = 512 * 1024;
@@ -247,8 +251,10 @@ void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_
 	cudaError_t cuda_ret;
 	cudaStream_t cuda_stream;
 	cudaEvent_t tmp_event, active_event, passive_event;
-	HIGGSItem *active, *passive, *tmp;
-	//HIGGSItem *host_buffer = new HIGGSItem(); // X,y
+	HIGGSItem *active, *passive, *tmp, *batch;
+
+	batch = new HIGGSItem();
+	batch->allocateMemory(batch_size);
 
 	float *host_buffer_X, *host_buffer_y;
 	float *current_X, *current_y;
@@ -265,7 +271,7 @@ void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_
 
 	float bw;
 	clock_t start_time, end_time;
-	double total_time;
+	double total_time, total_time_by_dataset;
 
 	/* Open the file */
 	if ((fd = open(file_name, O_RDONLY)) < 0)
@@ -299,7 +305,6 @@ void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_
 	cuda_ret = cudaMalloc(&device_buffer_y, file_stat.st_size);
 
 	/* Start transferring */
-	start_time = std::clock();
 	/* Queue dummy first event */
 	cuda_ret = cudaEventRecord(active_event, cuda_stream);
 	if (cuda_ret != cudaSuccess)
@@ -311,64 +316,88 @@ void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_
 	passive->X = host_buffer_X + host_buffer_size_X / sizeof(float);
 	passive->y = host_buffer_y + host_buffer_size_y / sizeof(float);
 
-	current_X = device_buffer_X;
-	current_y = device_buffer_y;
-
-	// TODO: Update file_stat accordingly.
-	//pending = file_stat.st_size;
-	/* Start the copy machine */
-	while (dataset.hasNext())
+	for (int i = 0; i < epoch; i++)
 	{
-		/* Make sure CUDA is not using the buffer */
-		cuda_ret = cudaEventSynchronize(active_event);
-		if (cuda_ret != cudaSuccess)
-			FATAL("Unable to wait for event");
-		//transfer_size = (pending > host_buffer_size_y) ? host_buffer_size_y : pending;
+		start_time = std::clock();
+		current_X = device_buffer_X;
+		current_y = device_buffer_y;
+		dataset.reset();
+		// TODO: Update file_stat accordingly.
+		//pending = file_stat.st_size;
+		/* Start the copy machine */
+		while (dataset.hasNext())
+		{
+			/* Make sure CUDA is not using the buffer */
+			cuda_ret = cudaEventSynchronize(active_event);
+			if (cuda_ret != cudaSuccess)
+				FATAL("Unable to wait for event");
+			//transfer_size = (pending > host_buffer_size_y) ? host_buffer_size_y : pending;
 
-		//Item load using dataset.dataset.read(active);
-		dataset.getNextBatch(true, active);
-		/*if (read(fd, active, transfer_size) < transfer_size)
+			//Item load using dataset.dataset.read(active);
+			dataset.getNextBatch(true, active);
+			/*if (read(fd, active, transfer_size) < transfer_size)
 			FATAL("Unable to read data from %s", file_name);*/
 
-		/* Send data to the device asynchronously */
-		cuda_ret = cudaMemcpyAsync(current_X, active->X, host_buffer_size_X, cudaMemcpyHostToDevice, cuda_stream);
-		if (cuda_ret != cudaSuccess)
-			FATAL("Unable to copy data to device memory");
-		cuda_ret = cudaMemcpyAsync(current_y, active->y, host_buffer_size_y, cudaMemcpyHostToDevice, cuda_stream);
-		if (cuda_ret != cudaSuccess)
-			FATAL("Unable to copy data to device memory");
-		/*
+			/* Send data to the device asynchronously */
+			cuda_ret = cudaMemcpyAsync(current_X, active->X, host_buffer_size_X, cudaMemcpyHostToDevice, cuda_stream);
+			if (cuda_ret != cudaSuccess)
+				FATAL("Unable to copy data to device memory");
+			cuda_ret = cudaMemcpyAsync(current_y, active->y, host_buffer_size_y, cudaMemcpyHostToDevice, cuda_stream);
+			if (cuda_ret != cudaSuccess)
+				FATAL("Unable to copy data to device memory");
+			/*
 			Kernel call in the stream. 
 		*/
-		model.trainBatchInStream(active->X, active->y, active->N, true, 0.0001, cuda_stream);
-		/* Record event to know when the buffer is idle */
-		cuda_ret = cudaEventRecord(active_event, cuda_stream);
+			model.trainBatchInStream(active->X, active->y, active->N, true, 0.0001, cuda_stream);
+			/* Record event to know when the buffer is idle */
+			cuda_ret = cudaEventRecord(active_event, cuda_stream);
+			if (cuda_ret != cudaSuccess)
+				FATAL("Unable to queue CUDA event");
+			/* Update counters and buffers */
+			// TODO: Size check
+			current_X = current_X + batch_size * (HIGGSDataset::NUMBER_OF_FEATURE + 1);
+			current_y = current_y + batch_size;
+			tmp = active;
+			active = passive;
+			passive = tmp;
+			tmp_event = active_event;
+			active_event = passive_event;
+			passive_event = tmp_event;
+		}
+
+		cuda_ret = cudaStreamSynchronize(cuda_stream);
 		if (cuda_ret != cudaSuccess)
-			FATAL("Unable to queue CUDA event");
-		/* Update counters and buffers */
-		// TODO: Size check
-		current_X = current_X + batch_size * (HIGGSDataset::NUMBER_OF_FEATURE + 1);
-		current_y = current_y + batch_size;
-		tmp = active;
-		active = passive;
-		passive = tmp;
-		tmp_event = active_event;
-		active_event = passive_event;
-		passive_event = tmp_event;
+			FATAL("Unable to wait for device");
+		end_time = std::clock();
+		total_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
+		total_time_by_dataset += dataset.total_time_taken;
+
+		float total = 0;
+		float corr = 0;
+		valdataset.reset();
+		while (valdataset.hasNext())
+		{
+			valdataset.getNextBatch(true, batch);
+			total += batch->N;
+			corr += model.evaluateModel(*batch, true);
+		}
+		std::cout << "Validation Accuracy From GPU: " << corr / total << std::endl;
+
+		// bw = 1.0f * file_stat.st_size / (total_time) / (1024 * 1024);
+		// fprintf(stdout, "%d MB in %f sec : %f MBps\n", file_stat.st_size / (1024 * 1024), total_time, bw);
+		// printf("Time take by data processing: %f , Total Number of Batch Processed: %f\n",
+		// 	   dataset.total_time_taken, dataset.total_batch_executed);
+		// printf("Computation Time : %f", total_time - dataset.total_time_taken);
 	}
 
-	cuda_ret = cudaStreamSynchronize(cuda_stream);
-	if (cuda_ret != cudaSuccess)
-		FATAL("Unable to wait for device");
-	end_time = std::clock();
-	total_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
-	printf("%f s\n", total_time);
+	std::cout << "\n********************************************" << endl;
+	std::cout << "Total time taken: " << total_time << endl;
+	std::cout << "Total time taken by data processing: " << total_time_by_dataset << endl;
+	std::cout << "Computation Time  After " << epoch << "epochs: " << total_time - total_time_by_dataset << endl;
+	std::cout << "Average Computation Time GPU :" << (total_time - total_time_by_dataset) / epoch << endl;
+	std::cout << "********************************************\n"
+			  << endl;
 
-	bw = 1.0f * file_stat.st_size / (total_time) / (1024 * 1024);
-	fprintf(stdout, "%d MB in %f sec : %f MBps\n", file_stat.st_size / (1024 * 1024), total_time, bw);
-	printf("Time take by data processing: %f , Total Number of Batch Processed: %f\n",
-		   dataset.total_time_taken, dataset.total_batch_executed);
-	printf("Computation Time : %f", total_time - dataset.total_time_taken);
 	cuda_ret = cudaFree(device_buffer_X);
 	if (cuda_ret != cudaSuccess)
 		FATAL("Unable to free device memory");
@@ -398,8 +427,11 @@ void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool 
 
 	if (memory_coalescing)
 	{
-		memory_coalescedKernel<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1), 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		memory_coalescedKernel_shared<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+		//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+		BlockSize.y = NUM_FEATURES;
+		computeGrad<<<GridSize, BlockSize, 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+		updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
 	}
 	else
 	{

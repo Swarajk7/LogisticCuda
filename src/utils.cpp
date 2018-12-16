@@ -16,9 +16,7 @@ float *generate_random_weight(int n)
 
 float sigmoid(float f)
 {
-    float res = 1.0f / (1.0f + expf(-1.0f * f));
-    if (res != res)
-        std::cout << f << std::endl;
+    float res = 1.0f / (1.0f + exp(-f));
     return res;
 }
 
