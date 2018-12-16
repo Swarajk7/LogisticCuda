@@ -39,8 +39,8 @@ int main(int argc, char *argv[])
 	HIGGSItem *batch = new HIGGSItem();
 	batch->allocateMemory(batch_size);
 
-	HIGGSDataset dataset("./data/HIGGS_Sample.csv", batch_size);
-	HIGGSDataset valdataset("./data/HIGGS_Sample_Val.csv", batch_size);
+	HIGGSDataset dataset("./data/train_digits.csv", batch_size);
+	HIGGSDataset valdataset("./data/train_digits.csv", batch_size);
 
 	LogisticRegression classifier(HIGGSDataset::NUMBER_OF_FEATURE);
 	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);

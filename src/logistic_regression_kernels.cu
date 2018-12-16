@@ -28,9 +28,9 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 
 __global__ void computeForward(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
-	__shared__ float data[BLOCK_SIZE];
+	__shared__ float data[800];
 	// TODO : Index calculation colesced, works only for untransposed data.
-	int index = blockIdx.x * blockDim.x;
+	int index = blockIdx.x * NUM_FEATURES;
 	int tx = threadIdx.x;
 	data[tx] = tx < NUM_FEATURES ? X[index + tx] : 0.0f;
 	data[tx] *= weights[tx];
@@ -92,48 +92,48 @@ __global__ void externalKernel(float *weights, float *grad_weights, float *X, fl
 	}
 }
 
-__global__ void computeGrad(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
-{
-	__shared__ float values[BLOCK_SIZE][NUM_FEATURES];
-	__shared__ float intermediate_shared[BLOCK_SIZE];
+// __global__ void computeGrad(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
+// {
+// 	__shared__ float values[BLOCK_SIZE][NUM_FEATURES];
+// 	__shared__ float intermediate_shared[BLOCK_SIZE];
 
-	int tx = threadIdx.x;
-	int ty = threadIdx.y;
+// 	int tx = threadIdx.x;
+// 	int ty = threadIdx.y;
 
-	int col = tx + blockIdx.x * blockDim.x;
-	int row = ty;
+// 	int col = tx + blockIdx.x * blockDim.x;
+// 	int row = ty;
 
-	values[tx][ty] = 0.0f;
-	__syncthreads();
+// 	values[tx][ty] = 0.0f;
+// 	__syncthreads();
 
-	if (col < N)
-	{
-		if (ty == 0)
-			intermediate_shared[tx] = intermediate_vector[col];
-		__syncthreads();
+// 	if (col < N)
+// 	{
+// 		if (ty == 0)
+// 			intermediate_shared[tx] = intermediate_vector[col];
+// 		__syncthreads();
 
-		// TODO: check for memory colescing in a transposed way, may be?
-		values[tx][ty] += X[row * size + col] * intermediate_shared[tx];
+// 		// TODO: check for memory colescing in a transposed way, may be?
+// 		values[tx][ty] += X[row * size + col] * intermediate_shared[tx];
 
-		__syncthreads();
+// 		__syncthreads();
 
-		int stride = blockDim.x >> 1;
-		while (stride >= 1)
-		{
-			__syncthreads();
-			if (tx < stride)
-			{
-				values[tx][ty] = values[tx][ty] + values[tx + stride][ty];
-			}
-			stride = stride >> 1;
-		}
-		__syncthreads();
-		if (tx == 0)
-		{
-			atomicAdd(&grad_weights[ty], values[tx][ty]);
-		}
-	}
-}
+// 		int stride = blockDim.x >> 1;
+// 		while (stride >= 1)
+// 		{
+// 			__syncthreads();
+// 			if (tx < stride)
+// 			{
+// 				values[tx][ty] = values[tx][ty] + values[tx + stride][ty];
+// 			}
+// 			stride = stride >> 1;
+// 		}
+// 		__syncthreads();
+// 		if (tx == 0)
+// 		{
+// 			atomicAdd(&grad_weights[ty], values[tx][ty]);
+// 		}
+// 	}
+// }
 
 __global__ void computeGrad_v2(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
 {

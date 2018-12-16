@@ -184,14 +184,17 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 		if (memory_access_type == 1)
 		{
 			//Global memory
-			memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+			BlockSize.x = 800;
+			GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
+			computeForward<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+			//memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-			GridSize.y = NUM_FEATURES;
+			/*GridSize.y = NUM_FEATURES;
 			BlockSize.x = 1024;
 			GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
 			//computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
 			computeGrad_v2<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
-			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
+			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);*/
 		}
 		else if (memory_access_type == 2)
 		{
@@ -202,8 +205,8 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 			GridSize.y = NUM_FEATURES;
 			//computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
-			computeGrad_v2<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
-			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
+			//computeGrad_v2<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+			//updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
 		}
 		else
 		{
@@ -431,11 +434,14 @@ void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool 
 
 	if (memory_coalescing)
 	{
+		//BlockSize.x = 800;
+		//GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
+		//computeForward<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 		memory_coalescedKernel_shared<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 		//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-		BlockSize.y = NUM_FEATURES;
-		computeGrad<<<GridSize, BlockSize, 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
-		updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
+		// BlockSize.y = NUM_FEATURES;
+		// computeGrad<<<GridSize, BlockSize, 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+		// updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
 	}
 	else
 	{
