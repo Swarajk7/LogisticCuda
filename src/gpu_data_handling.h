@@ -1,5 +1,13 @@
 #define BLOCK_SIZE 32
 #include "data_reader.h"
+#include <cuda.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include "support.h"
+#include <ctime>
+#include <cuda_runtime.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
 
 class GPUClassificationModel
 {
@@ -29,6 +37,7 @@ public:
 	void printIntermediateValue();
 	void printGpuData(float *array);
 	void SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements);
+	void trainBatchInStream(float *, float *, int, bool, float, cudaStream_t);
 };
 
-void dbl_buffer(HIGGSDataset &, int, const char *);
+void dbl_buffer(HIGGSDataset &, GPUClassificationModel &, int, const char *);

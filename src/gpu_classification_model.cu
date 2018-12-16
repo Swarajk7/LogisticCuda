@@ -176,21 +176,11 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 	{
 		memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-		//Subtract W with GradWeights
-		// for (int i = 0; i < num_features; i++)
-		// {
-		// 	weights[i] -= grad_weights[i];
-		// }
 	}
 	else
 	{
 		uncoalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-		//Subtract W with GradWeights
-		// for (int i = 0; i < num_features; i++)
-		// {
-		// 	weights[i] -= grad_weights[i];
-		// }
 	}
 }
 
@@ -209,7 +199,7 @@ void GPUClassificationModel::printGpuData(float *array)
 	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(array, intermediate_vector, num_features);
 }
 
-void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
+void dbl_buffer(HIGGSDataset &dataset, GPUClassificationModel &model, int batch_size, const char *file_name)
 {
 	dataset.reset();
 	//static const size_t host_buffer_size = 512 * 1024;
@@ -235,7 +225,6 @@ void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
 	tmp = new HIGGSItem();
 
 	float *device_buffer_X, *device_buffer_y;
-	size_t pending, transfer_size;
 
 	float bw;
 	clock_t start_time, end_time;
@@ -314,6 +303,7 @@ void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
 		/*
 			Kernel call in the stream. 
 		*/
+		model.trainBatchInStream(active->X, active->y, active->N, true, 0.0001, cuda_stream);
 		/* Record event to know when the buffer is idle */
 		cuda_ret = cudaEventRecord(active_event, cuda_stream);
 		if (cuda_ret != cudaSuccess)
@@ -341,6 +331,7 @@ void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
 	fprintf(stdout, "%d MB in %f sec : %f MBps\n", file_stat.st_size / (1024 * 1024), total_time, bw);
 	printf("Time take by data processing: %f , Total Number of Batch Processed: %f\n",
 		   dataset.total_time_taken, dataset.total_batch_executed);
+	printf("Computation Time : %f", total_time - dataset.total_time_taken);
 	cuda_ret = cudaFree(device_buffer_X);
 	if (cuda_ret != cudaSuccess)
 		FATAL("Unable to free device memory");
@@ -356,4 +347,26 @@ void dbl_buffer(HIGGSDataset &dataset, int batch_size, const char *file_name)
 	close(fd);
 
 	fprintf(stdout, "File Size %d", file_stat.st_size);
+}
+
+void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t stream)
+{
+	//printf("Running trainmodelInStrean() ");
+	int num_threads_p_block = BLOCK_SIZE;
+	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
+
+	dim3 GridSize(num_blocks, 1, 1);
+	dim3 BlockSize(num_threads_p_block, 1, 1);
+	const int X_dim = 32;
+
+	if (memory_coalescing)
+	{
+		memory_coalescedKernel<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1), 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+	}
+	else
+	{
+		uncoalescedKernel<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1), 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+	}
 }

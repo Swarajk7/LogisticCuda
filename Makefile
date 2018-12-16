@@ -48,7 +48,7 @@ $(BIN)/main.o: $(SRC)/main.cpp
 $(BIN)/logistic.o: $(SRC)/logistic.cpp
 	$(NVCC) -c -o $@ $(SRC)/logistic.cpp $(NVCC_FLAGS)
 
-$(BIN)/gpu_classification_model_cu.o: $(SRC)/gpu_classification_model.cu $(SRC)/logistic_regression_kernels.cu $(SRC)/support.h
+$(BIN)/gpu_classification_model_cu.o: $(SRC)/gpu_classification_model.cu $(SRC)/logistic_regression_kernels.cu $(SRC)/support.h $(SRC)/gpu_data_handling.h
 	$(NVCC) -c -o $@ $(SRC)/gpu_classification_model.cu $(NVCC_FLAGS)
 
 $(BIN)/$(EXECUTABLE): $(OBJ)

@@ -107,4 +107,6 @@ void HIGGSDataset::reset()
     file.clear();
     file.seekg(0, ios::beg);
     has_next = true;
+    total_batch_executed = 0;
+    total_time_taken = 0;
 }
