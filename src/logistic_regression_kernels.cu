@@ -4,8 +4,6 @@
 //Instead of using value, directly use intermediate_vector[i].
 //Use hardware math functions for exp.
 
-
-
 __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
 	int index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -63,20 +61,53 @@ __global__ void externalKernel(float *weights, float *grad_weights, float *X, fl
 	}
 }
 
-__global__ void uncoalescedKernel(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
+__global__ void computeGrad(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
 {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
-	float value = 0;
-	int start = index * num_features;
-	if (start < N)
+	__shared__ float values[BLOCK_SIZE][NUM_FEATURES];
+	__shared__ float intermediate_shared[BLOCK_SIZE];
+
+	int tx = threadIdx.x;
+	int ty = threadIdx.y;
+
+	int col = tx + blockIdx.x * blockDim.x;
+	int row = ty;
+
+	values[tx][ty] = 0.0f;
+	__syncthreads();
+
+	if (col < N)
 	{
-		for (int i = 0; i < num_features; i++)
+		if (ty == 0)
+			intermediate_shared[tx] = intermediate_vector[col];
+		__syncthreads();
+
+		values[tx][ty] += X[row * size + col] * intermediate_shared[tx];
+
+		__syncthreads();
+
+		int stride = blockDim.x >> 1;
+		while (stride >= 1)
 		{
-			value += weights[i] * X[start + i];
+			__syncthreads();
+			if (tx < stride)
+			{
+				values[tx][ty] = values[tx][ty] + values[tx + stride][ty];
+			}
+			stride = stride >> 1;
 		}
-		value = 1 / (1 + expf(-value));
-		value -= y[index];
-		intermediate_vector[index] = value;
+		__syncthreads();
+		if (tx == 0)
+		{
+			atomicAdd(&grad_weights[ty], values[tx][ty]);
+		}
+	}
+}
+
+__global__ void updateGrad(float *weights, float *grad_weights, float learning_rate, int N)
+{
+	if (threadIdx.x < NUM_FEATURES)
+	{
+		weights[threadIdx.x] -= (learning_rate * grad_weights[threadIdx.x]) / N;
 	}
 }
 
@@ -96,22 +127,35 @@ __global__ void evaluate_model(float *weights, float *X, float *y, float *interm
 			stride += size;
 		}
 		value = 1 / (1 + expf(-value));
-		float y_pred;
-		if (value > 0.5)
-			y_pred = 1.0f;
-		else
-			y_pred = 0.0f;
-		if (y_pred == y[index])
+		float y_pred = value > 0.5f ? 1.0f : 0.0f;
+		if (fabs(y_pred - y[index]) < 0.001)
 			atomicAdd(correct_val, 1);
 	}
 }
 
+__global__ void uncoalescedKernel(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
+{
+	int index = blockIdx.x * blockDim.x + threadIdx.x;
+	float value = 0;
+	int start = index * num_features;
+	if (start < N)
+	{
+		for (int i = 0; i < num_features; i++)
+		{
+			value += weights[i] * X[start + i];
+		}
+		value = 1 / (1 + expf(-value));
+		value -= y[index];
+		intermediate_vector[index] = value;
+	}
+}
 
 __global__ void memory_coalescedKernel_shared(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
 	//BLOCK_SIZE should be greater than 29
 	__shared__ float weights_shared[29];
-	if(threadIdx.x<num_features){
+	if (threadIdx.x < num_features)
+	{
 		weights_shared[threadIdx.x] = weights[threadIdx.x];
 	}
 	__syncthreads();
@@ -136,18 +180,13 @@ __global__ void memory_coalescedKernel_shared(float *weights, float *X, float *y
 	}
 }
 
-
-
-
-
-__global__ void printKernel(float * weights,float * inter_vector,int num_features){
+__global__ void printKernel(float *weights, float *inter_vector, int num_features)
+{
 	printf("WEIGHTS\n");
 	for (int i = 0; i < num_features; i++)
 		printf("%f ", weights[i]);
 
 	printf("Inter Values\n");
-	for(int i=0;i<num_features;i++)
-		printf("%f ",inter_vector[i]);
+	for (int i = 0; i < num_features; i++)
+		printf("%f ", inter_vector[i]);
 }
-
-

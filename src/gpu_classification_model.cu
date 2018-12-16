@@ -15,7 +15,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 
-
 __constant__ float constant_weights[29];
 
 // Allocate a device memory of num_elements float elements
@@ -34,7 +33,6 @@ float *AllocateDeviceArray(int num_elements)
 	// 	printf("AllocateDeviceArray -- 4\n");
 	return devArray;
 }
-
 
 void InitailizeDeviceArrayValues(float *devArray, int num_elements, bool random)
 {
@@ -147,18 +145,17 @@ float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalesci
 {
 	//Evaluating Kernel code here
 	cudaMemset(correct_val, 0, sizeof(float));
-	int num_threads_p_block = BLOCK_SIZE;
-	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
-
+	int num_blocks = ceilf((N * 1.0f) / BLOCK_SIZE);
+	setData(item);
 	dim3 GridSize(num_blocks, 1, 1);
-	dim3 BlockSize(num_threads_p_block, 1, 1);
+	dim3 BlockSize(BLOCK_SIZE, 1, 1);
 	evaluate_model<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features, correct_val);
 	float *host_correct_val = (float *)malloc(sizeof(float));
 	cudaMemcpy(host_correct_val, correct_val, sizeof(float), cudaMemcpyDeviceToHost);
 	return *host_correct_val;
 }
 
-void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,int memory_access_type,float learning_rate)
+void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, int memory_access_type, float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
@@ -175,40 +172,45 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing,i
 
 	//printf("Running trainmodel()\n");
 
-	int num_threads_p_block = BLOCK_SIZE;
-	int num_blocks = ceilf((N * 1.0f) / num_threads_p_block);
+	int num_blocks = ceilf((N * 1.0f) / BLOCK_SIZE);
 
 	dim3 GridSize(num_blocks, 1, 1);
-	dim3 BlockSize(num_threads_p_block, 1, 1);
+	dim3 BlockSize(BLOCK_SIZE, 1, 1);
 	const int X_dim = 32;
 
 	if (memory_coalescing)
 	{
-		if(memory_access_type == 1){
+		if (memory_access_type == 1)
+		{
 			//Global memory
 			memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			BlockSize.y = NUM_FEATURES;
+			computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
 		}
-		else if(memory_access_type == 2){
+		else if (memory_access_type == 2)
+		{
 			//printf("Using shared");
 			//shared memory
 			//BLOCK_SIZE should be greater than 29
 			memory_coalescedKernel_shared<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 		}
-		else{
+		else
+		{
 			//constant memory
 			//printf("Using constant");
-			float * host_weights = (float *)malloc(num_features*sizeof(float));
-			cudaMemcpy(host_weights,weights,num_features*sizeof(float),cudaMemcpyDeviceToHost);
+			float *host_weights = (float *)malloc(num_features * sizeof(float));
+			cudaMemcpy(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost);
 
-			cudaMemcpyToSymbol(constant_weights,host_weights,num_features*sizeof(float));
+			cudaMemcpyToSymbol(constant_weights, host_weights, num_features * sizeof(float));
 
 			memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
 
-			cudaMemcpy(weights,&constant_weights[0],num_features*sizeof(float),cudaMemcpyDeviceToDevice);
-			
-			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+			cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
+
+			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 			free(host_weights);
 		}
 	}

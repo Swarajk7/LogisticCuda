@@ -11,23 +11,7 @@ int main(int argc, char *argv[])
 	clock_t start_time, end_time;
 	double total_train_time = 0, total_evaluation_time = 0;
 	double total_cpu_train_time = 0;
-	// HIGGSDataset dataset("./data/sample.csv", 10);
-	// HIGGSItem item = dataset.getNextBatch(false);
-	// ofstream writer;
-	// writer.open("./data/sample_copy.csv", std::ios::out);
-	// int xindex = 0.0f;
-	// for (int j = 0; j < item.N; j++)
-	// {
-	// 	for (int i = 0; i < HIGGSDataset::NUMBER_OF_FEATURE + 1; i++)
-	// 	{
-	// 		writer << item.X[xindex + i];
-	// 		if (i != HIGGSDataset::NUMBER_OF_FEATURE)
-	// 			writer << ",";
-	// 	}
-	// 	xindex += HIGGSDataset::NUMBER_OF_FEATURE + 1;
-	// 	writer << endl;
-	// }
-	// writer.close();
+
 	int batch_size = 100;
 	if (argc >= 2)
 	{
@@ -71,12 +55,12 @@ int main(int argc, char *argv[])
 		std::cout << "Total time taken: " << total_cpu_train_time << endl;
 		std::cout << "Total time taken by data processing: " << dataset.total_time_taken << endl;
 		std::cout << "Computation Time : " << total_cpu_train_time - dataset.total_time_taken << endl;
-		//std::cout << "Evaluating! Accuracy: ";
-		//valdataset.reset();
-		//std::cout << classifier.evaluate(valdataset) << endl;
+		valdataset.reset();
+		//std::cout << "Validating Accuracy at CPU: " << classifier.evaluate(valdataset) << endl;
 	}
 	//model.printWeights();
 
+	// GPU Code Starts here.
 	for (int i = 0; i < 1; i++)
 	{
 		int correct = 0, total = 0;
@@ -85,7 +69,6 @@ int main(int argc, char *argv[])
 		std::cout << "Strated GPU timing for the epoch\n";
 
 		total_train_time = 0;
-
 		start_time = std::clock();
 
 		while (dataset.hasNext())
@@ -97,7 +80,7 @@ int main(int argc, char *argv[])
 			++batch_no;
 			dataset.getNextBatch(true, batch);
 
-			model.trainModel(*batch, true, 0.0001);
+			model.trainModel(*batch, true, 1, 0.0001);
 			total += batch->N;
 
 			//printf("WEIGHTS: \n");
@@ -117,7 +100,6 @@ int main(int argc, char *argv[])
 		std::cout << "Total time taken by data processing: " << dataset.total_time_taken << endl;
 		std::cout << "Computation Time : " << total_train_time - dataset.total_time_taken << endl;
 		//model.printWeights();
-		/*std::cout << "Evaluating! Accuracy: ";
 		valdataset.reset();
 
 		total = 0;
@@ -131,7 +113,7 @@ int main(int argc, char *argv[])
 			end_time = std::clock();
 			total_evaluation_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
 		}
-		std::cout << corr / total << std::endl;*/
+		std::cout << "Validation Accuracy From GPU: " << corr / total << std::endl;
 	}
 
 	dataset.reset();

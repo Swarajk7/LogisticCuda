@@ -1,4 +1,5 @@
 #define BLOCK_SIZE 32
+#define NUM_FEATURES 29
 #include "data_reader.h"
 #include <cuda.h>
 #include <fcntl.h>
