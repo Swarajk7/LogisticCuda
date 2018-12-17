@@ -43,7 +43,7 @@ int main(int argc, char *argv[])
 	HIGGSDataset valdataset("./data/train_digits.csv", batch_size);
 
 	LogisticRegression classifier(HIGGSDataset::NUMBER_OF_FEATURE);
-	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
+	GPUClassificationModel model(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, false);
 
 	total_cpu_train_time = 0;
 	total_time_by_dataset = 0;
@@ -63,14 +63,14 @@ int main(int argc, char *argv[])
 			*/
 			++batch_no;
 			dataset.getNextBatch(false, batch);
-			end_time = std::clock();
-			total_cpu_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
 			start_time = std::clock();
 			correct += classifier.trainBatch(*batch, 0.0001);
+			end_time = std::clock();
+			total_cpu_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
 			total += batch->N;
 		}
 		total_time_by_dataset += dataset.total_time_taken;
-		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
+	//	std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
 		valdataset.reset();
 		std::cout << "Validating Accuracy at CPU: " << classifier.evaluate(valdataset, batch) << endl;
 	}
@@ -84,70 +84,89 @@ int main(int argc, char *argv[])
 			  << endl;
 	//model.printWeights();
 
-	std::cout << "Strated GPU timing for the epoch\n";
-	total_train_time = 0;
-	total_time_by_dataset = 0;
-	// GPU Code Starts here.
-	for (int i = 0; i < epoch; i++)
-	{
-		int correct = 0, total = 0;
-		int batch_no = 0;
-		dataset.reset();
+	// std::cout << "Strated GPU timing for the epoch\n";
+	// total_train_time = 0;
+	// total_time_by_dataset = 0;
+	// // GPU Code Starts here.
 
-		start_time = std::clock();
+	// valdataset.reset();
 
-		while (dataset.hasNext())
-		{
-			/*
-			1. train logistic
-			2. compute accuracy for validation set
-			*/
-			++batch_no;
-			dataset.getNextBatch(false, batch);
+	// int total = 0;
+	// float corr = 0;
+	// while (valdataset.hasNext())
+	// {
+	// 	valdataset.getNextBatch(true, batch);
+	// 	total += batch->N;
+	// 	start_time = std::clock();
+	// 	corr += model.evaluateModel(*batch, true);
+	// 	end_time = std::clock();
+	// 	total_evaluation_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
+	// }
+	// std::cout << "Validation Accuracy From GPU: " << corr / total << std::endl;
 
-			model.trainModel(*batch, true, memory_type, 0.0001);
-			total += batch->N;
+	// for (int i = 0; i < epoch; i++)
+	// {
+	// 	int correct = 0, total = 0;
+	// 	int batch_no = 0;
+	// 	dataset.reset();
 
-			//printf("WEIGHTS: \n");
-			//model.printWeights();
+	// 	while (dataset.hasNext())
+	// 	{
+	// 		/*
+	// 		1. train logistic
+	// 		2. compute accuracy for validation set
+	// 		*/
+	// 		++batch_no;
+	// 		dataset.getNextBatch(false, batch);
+	// 		model.setData(*batch);
 
-			//cudaDeviceSynchronize();
-			//usleep(3000);
+	// 		start_time = std::clock();
+	// 		model.trainModel(true, memory_type, 0.0001);
+	// 		end_time = std::clock();
+	// 		total_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
+			
+	// 		total += batch->N;
 
-			//printf("Intermediate: \n");
-			//model.printIntermediateValue();
-		}
+	// 		//printf("WEIGHTS: \n");
+	// 		//model.printWeights();
 
-		end_time = std::clock();
-		total_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
-		total_time_by_dataset += dataset.total_time_taken;
-		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
-		//model.printWeights();
-		valdataset.reset();
+	// 		//cudaDeviceSynchronize();
+	// 		//usleep(3000);
 
-		total = 0;
-		float corr = 0;
-		while (valdataset.hasNext())
-		{
-			valdataset.getNextBatch(true, batch);
-			total += batch->N;
-			start_time = std::clock();
-			corr += model.evaluateModel(*batch, true);
-			end_time = std::clock();
-			total_evaluation_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
-		}
-		std::cout << "Validation Accuracy From GPU: " << corr / total << std::endl;
-	}
-	std::cout << "\n********************************************" << endl;
-	std::cout << "Total time taken: " << total_train_time << endl;
-	std::cout << "Total time taken by data processing: " << total_time_by_dataset << endl;
-	std::cout << "Computation Time  After " << epoch << "epochs: " << total_train_time - total_time_by_dataset << endl;
-	std::cout << "Average Computation Time GPU :" << (total_train_time - total_time_by_dataset) / epoch << endl;
-	std::cout << "********************************************\n"
-			  << endl;
+	// 		//printf("Intermediate: \n");
+	// 		//model.printIntermediateValue();
+	// 	}
+	// 	total_time_by_dataset += dataset.total_time_taken;
+	// 	//std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
+	// 	//model.printWeights();
+	// 	valdataset.reset();
+
+	// 	total = 0;
+	// 	float corr = 0;
+	// 	while (valdataset.hasNext())
+	// 	{
+	// 		valdataset.getNextBatch(true, batch);
+	// 		total += batch->N;
+	// 		start_time = std::clock();
+	// 		corr += model.evaluateModel(*batch, true);
+	// 		end_time = std::clock();
+	// 		total_evaluation_time = (end_time - start_time) / (double)CLOCKS_PER_SEC;
+	// 	}
+	// 	std::cout << "Validation Accuracy From GPU: " << corr / total << std::endl;
+	// }
+	// std::cout << "\n********************************************" << endl;
+	// std::cout << "Total time taken: " << total_train_time << endl;
+	// std::cout << "Total time taken by data processing: " << total_time_by_dataset << endl;
+	// // std::cout << "Computation Time  After " << epoch << "epochs: " << total_train_time - total_time_by_dataset << endl;
+	// // std::cout << "Average Computation Time GPU :" << (total_train_time - total_time_by_dataset) / epoch << endl;
+	// std::cout << "********************************************\n"
+	// 		  << endl;
+
+	// std::cout << endl
+	// 		  << "Total Speed Up" << total_cpu_train_time / total_train_time << "x" << endl;
 
 	//Double buffering!
-	dataset.reset();
-	GPUClassificationModel model2(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
-	dbl_buffer(dataset, valdataset, model2, batch_size, "./data/HIGGS_Sample.csv", epoch);
+	 dataset.reset();
+	 GPUClassificationModel model2(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
+	 dbl_buffer(dataset, valdataset, model2, batch_size, "./data/HIGGS_Sample.csv", epoch);
 }

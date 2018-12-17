@@ -147,8 +147,8 @@ float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalesci
 {
 	//Evaluating Kernel code here
 	cudaMemset(correct_val, 0, sizeof(float));
-	int num_blocks = ceilf((N * 1.0f) / BLOCK_SIZE);
 	setData(item);
+	int num_blocks = ceilf((N * 1.0f) / BLOCK_SIZE);
 	dim3 GridSize(num_blocks, 1, 1);
 	dim3 BlockSize(BLOCK_SIZE, 1, 1);
 	evaluate_model<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features, correct_val);
@@ -157,7 +157,7 @@ float GPUClassificationModel::evaluateModel(HIGGSItem item, bool memory_coalesci
 	return *host_correct_val;
 }
 
-void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, int memory_access_type, float learning_rate)
+void GPUClassificationModel::trainModel(bool memory_coalescing, int memory_access_type, float learning_rate)
 {
 	//training kernel code here
 	//We can pass the "this" item also instead of individual values
@@ -168,7 +168,7 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 	// memory_access_type 3 or everything else => constant
 	//int memory_access_type = 1;
 
-	setData(item);
+	// setData(item);
 
 	this->learning_rate = learning_rate;
 
@@ -214,26 +214,26 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 		{
 			//constant memory
 			//printf("Using constant");
-			/*cudaMemcpy(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost);
+			cudaMemcpy(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost);
 
 			cudaError_t cuda_ret = cudaMemcpyToSymbol(constant_weights, host_weights, num_features * sizeof(float));
 			if (cuda_ret != cudaSuccess)
 				FATAL("Unable to copy to constant memory");
-			*/
+			
 			//memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
 			BlockSize.x = GRAD_COMP_BLOCK_SIZE;
 			GridSize.x = N;
 			// TODO: Constant Memory
-			computeForward<<<GridSize, BlockSize>>>(weights,X, y, intermediate_vector, batch_size, N, num_features);
+			computeForward<<<GridSize, BlockSize>>>( X, y, intermediate_vector, batch_size, N, num_features);
 
 			//cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
 
 			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 
 			// TODO: Transpose Kernel
-			dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((N * 1.0f) / TILE_DIM));
-			dim3 transpose_block(TILE_DIM, TILE_DIM);
-			tranposeKernel<<<transpose_grid, transpose_block>>>(X_trans, X, N);
+			dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((this->batch_size * 1.0f) / TILE_DIM));
+			dim3 transpose_block(TILE_DIM, TILE_DIM, 1);
+			tranposeKernel<<<transpose_grid, transpose_block>>>(X_trans, X, N, this->batch_size);
 
 			GridSize.y = NUM_FEATURES;
 			BlockSize.x = GRAD_COMP_BLOCK_SIZE;
@@ -274,7 +274,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 	static const size_t host_buffer_size_y = batch_size * sizeof(float);
 	struct stat file_stat;
 	cudaError_t cuda_ret;
-	cudaStream_t cuda_stream;
+	cudaStream_t cuda_stream0,cuda_stream1,my_stream;
 	cudaEvent_t tmp_event, active_event, passive_event;
 	HIGGSItem *active, *passive, *tmp, *batch;
 
@@ -306,9 +306,15 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 		FATAL("Unable to read meta data for %s", file_name);
 	/* Create CUDA stream for asynchronous copies */
 
-	cuda_ret = cudaStreamCreate(&cuda_stream);
+	cuda_ret = cudaStreamCreate(&cuda_stream0);
 	if (cuda_ret != cudaSuccess)
-		FATAL("Unable to create CUDA stream");
+		FATAL("Unable to create CUDA stream 0");
+	cuda_ret = cudaStreamCreate(&cuda_stream1);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to create CUDA stream 1");	
+	cuda_ret = cudaStreamCreate(&my_stream);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to create CUDA stream 1");		
 	/* Create CUDA events */
 	cuda_ret = cudaEventCreate(&active_event);
 	if (cuda_ret != cudaSuccess)
@@ -331,7 +337,8 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 
 	/* Start transferring */
 	/* Queue dummy first event */
-	cuda_ret = cudaEventRecord(active_event, cuda_stream);
+	my_stream = cuda_stream0;
+	cuda_ret = cudaEventRecord(active_event, my_stream);
 	if (cuda_ret != cudaSuccess)
 		FATAL("Unable to queue CUDA event");
 
@@ -347,6 +354,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 		start_time = std::clock();
 		current_X = device_buffer_X;
 		current_y = device_buffer_y;
+		
 		// TODO: Update file_stat accordingly.
 		//pending = file_stat.st_size;
 		/* Start the copy machine */
@@ -364,18 +372,18 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 			FATAL("Unable to read data from %s", file_name);*/
 
 			/* Send data to the device asynchronously */
-			cuda_ret = cudaMemcpyAsync(current_X, active->X, host_buffer_size_X, cudaMemcpyHostToDevice, cuda_stream);
+			cuda_ret = cudaMemcpyAsync(current_X, active->X, host_buffer_size_X, cudaMemcpyHostToDevice, my_stream);
 			if (cuda_ret != cudaSuccess)
 				FATAL("Unable to copy data to device memory");
-			cuda_ret = cudaMemcpyAsync(current_y, active->y, host_buffer_size_y, cudaMemcpyHostToDevice, cuda_stream);
+			cuda_ret = cudaMemcpyAsync(current_y, active->y, host_buffer_size_y, cudaMemcpyHostToDevice, my_stream);
 			if (cuda_ret != cudaSuccess)
 				FATAL("Unable to copy data to device memory");
 			/*
 			Kernel call in the stream. 
 		*/
-			model.trainBatchInStream(active->X, active->y, active->N, true, 0.0001, cuda_stream);
+			model.trainBatchInStream(active->X, active->y, active->N, true, 0.0001, my_stream);
 			/* Record event to know when the buffer is idle */
-			cuda_ret = cudaEventRecord(active_event, cuda_stream);
+			cuda_ret = cudaEventRecord(active_event, my_stream);
 			if (cuda_ret != cudaSuccess)
 				FATAL("Unable to queue CUDA event");
 			/* Update counters and buffers */
@@ -388,9 +396,11 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 			tmp_event = active_event;
 			active_event = passive_event;
 			passive_event = tmp_event;
+			my_stream = (my_stream== cuda_stream0) ? cuda_stream1 : cuda_stream0; 
 		}
 
-		cuda_ret = cudaStreamSynchronize(cuda_stream);
+		cuda_ret = cudaStreamSynchronize(cuda_stream0);
+        cuda_ret = cudaStreamSynchronize(cuda_stream1);
 		if (cuda_ret != cudaSuccess)
 			FATAL("Unable to wait for device");
 		end_time = std::clock();
@@ -440,7 +450,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 	fprintf(stdout, "File Size %d", file_stat.st_size);
 }
 
-void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t & stream)
+void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t &stream)
 {
 	//printf("Running trainmodelInStrean() ");
 	int num_threads_p_block = BLOCK_SIZE;
@@ -449,26 +459,26 @@ void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool 
 	dim3 GridSize(num_blocks, 1, 1);
 	dim3 BlockSize(num_threads_p_block, 1, 1);
 
-	//cudaMemcpyAsync(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost, stream);
+	cudaMemcpyAsync(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost, stream);
 
-	//cudaError_t cuda_ret = cudaMemcpyToSymbolAsync(constant_weights, host_weights, num_features * sizeof(float), 0, cudaMemcpyHostToDevice, stream);
-	//if (cuda_ret != cudaSuccess)
-	//	FATAL("Unable to copy to constant memory");
+	cudaError_t cuda_ret = cudaMemcpyToSymbolAsync(constant_weights, host_weights, num_features * sizeof(float), 0, cudaMemcpyHostToDevice, stream);
+	if (cuda_ret != cudaSuccess)
+		FATAL("Unable to copy to constant memory");
 
 	//memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
 	BlockSize.x = GRAD_COMP_BLOCK_SIZE;
 	GridSize.x = N;
 	// TODO: Constant Memory
-	computeForward<<<GridSize, BlockSize, 0, stream>>>(weights,X, y, intermediate_vector, batch_size, N, num_features);
+	computeForward<<<GridSize, BlockSize, 0, stream>>>(X, y, intermediate_vector, batch_size, N, num_features);
 
 	//cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
 
 	//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 
 	// TODO: Transpose Kernel
-	dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((N * 1.0f) / TILE_DIM));
+	dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((this->batch_size * 1.0f) / TILE_DIM));
 	dim3 transpose_block(TILE_DIM, TILE_DIM);
-	tranposeKernel<<<transpose_grid, transpose_block, 0, stream>>>(X_trans, X, N);
+	tranposeKernel<<<transpose_grid, transpose_block, 0, stream>>>(X_trans, X, N, this->batch_size);
 
 	GridSize.y = NUM_FEATURES;
 	BlockSize.x = GRAD_COMP_BLOCK_SIZE;
@@ -476,5 +486,5 @@ void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool 
 	//computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
 	computeGrad_v2<<<GridSize, BlockSize, 0, stream>>>(grad_weights, X_trans, intermediate_vector, batch_size, N, num_features, learning_rate);
 	updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
-	cudaDeviceSynchronize();
+	
 }
