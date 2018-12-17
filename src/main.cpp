@@ -55,7 +55,6 @@ int main(int argc, char *argv[])
 		dataset.reset();
 		int batch_no = 0;
 
-		start_time = std::clock();
 		while (dataset.hasNext())
 		{
 			/*
@@ -64,11 +63,12 @@ int main(int argc, char *argv[])
 			*/
 			++batch_no;
 			dataset.getNextBatch(false, batch);
+			end_time = std::clock();
+			total_cpu_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
+			start_time = std::clock();
 			correct += classifier.trainBatch(*batch, 0.0001);
 			total += batch->N;
 		}
-		end_time = std::clock();
-		total_cpu_train_time += (end_time - start_time) / (double)CLOCKS_PER_SEC;
 		total_time_by_dataset += dataset.total_time_taken;
 		std::cout << "Finished training one epoch, accuracy: " << correct * 1.0f / total << endl;
 		valdataset.reset();
@@ -78,8 +78,8 @@ int main(int argc, char *argv[])
 	std::cout << "\n********************************************" << endl;
 	std::cout << "Total time taken: " << total_cpu_train_time << endl;
 	std::cout << "Total time taken by data processing: " << total_time_by_dataset << endl;
-	std::cout << "Computation Time After" << epoch << " epochs: " << total_cpu_train_time - total_time_by_dataset << endl;
-	std::cout << "Average Computation Time After" << (total_cpu_train_time - total_time_by_dataset) / epoch << endl;
+	//std::cout << "Computation Time After" << epoch << " epochs: " << total_cpu_train_time - total_time_by_dataset << endl;
+	//std::cout << "Average Computation Time After" << (total_cpu_train_time - total_time_by_dataset) / epoch << endl;
 	std::cout << "********************************************\n"
 			  << endl;
 	//model.printWeights();
@@ -103,7 +103,7 @@ int main(int argc, char *argv[])
 			2. compute accuracy for validation set
 			*/
 			++batch_no;
-			dataset.getNextBatch(true, batch);
+			dataset.getNextBatch(false, batch);
 
 			model.trainModel(*batch, true, memory_type, 0.0001);
 			total += batch->N;
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
 	std::cout << "********************************************\n"
 			  << endl;
 
-	// Double buffering!
+	//Double buffering!
 	dataset.reset();
 	GPUClassificationModel model2(batch_size, HIGGSDataset::NUMBER_OF_FEATURE, true);
 	dbl_buffer(dataset, valdataset, model2, batch_size, "./data/HIGGS_Sample.csv", epoch);

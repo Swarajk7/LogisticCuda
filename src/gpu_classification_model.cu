@@ -1,9 +1,10 @@
+#include "gpu_data_handling.h"
+__constant__ float constant_weights[NUM_FEATURES];
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
 #include "utils.h"
-#include "gpu_data_handling.h"
 #include "logistic_regression_kernels.cu"
 #include "data_reader.h"
 
@@ -15,8 +16,6 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <iostream>
-
-__constant__ float constant_weights[29];
 
 // Allocate a device memory of num_elements float elements
 float *AllocateDeviceArray(int num_elements)
@@ -97,9 +96,11 @@ GPUClassificationModel::GPUClassificationModel(int batch_size, int num_features,
 	intermediate_vector = AllocateDeviceArray(batch_size);
 
 	X = AllocateDeviceArray(batch_size * this->num_features);
+	X_trans = AllocateDeviceArray(batch_size * this->num_features);
 	y = AllocateDeviceArray(batch_size);
 	correct_val = AllocateDeviceArray(1);
 	cudaMemset(correct_val, 0, sizeof(float));
+	host_weights = (float *)malloc(num_features * sizeof(float));
 }
 
 GPUClassificationModel::GPUClassificationModel(HIGGSItem item, int num_features, bool random)
@@ -186,7 +187,8 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 			//Global memory
 			BlockSize.x = 800;
 			GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
-			computeForward<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
+			// TODO: Constant Memory
+			//computeForward<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 			//memory_coalescedKernel<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
 			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 			/*GridSize.y = NUM_FEATURES;
@@ -212,17 +214,33 @@ void GPUClassificationModel::trainModel(HIGGSItem item, bool memory_coalescing, 
 		{
 			//constant memory
 			//printf("Using constant");
-			float *host_weights = (float *)malloc(num_features * sizeof(float));
-			cudaMemcpy(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost);
+			/*cudaMemcpy(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost);
 
-			cudaMemcpyToSymbol(constant_weights, host_weights, num_features * sizeof(float));
+			cudaError_t cuda_ret = cudaMemcpyToSymbol(constant_weights, host_weights, num_features * sizeof(float));
+			if (cuda_ret != cudaSuccess)
+				FATAL("Unable to copy to constant memory");
+			*/
+			//memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
+			BlockSize.x = GRAD_COMP_BLOCK_SIZE;
+			GridSize.x = N;
+			// TODO: Constant Memory
+			computeForward<<<GridSize, BlockSize>>>(weights,X, y, intermediate_vector, batch_size, N, num_features);
 
-			memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
+			//cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
 
-			cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
+			//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
 
-			externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-			free(host_weights);
+			// TODO: Transpose Kernel
+			dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((N * 1.0f) / TILE_DIM));
+			dim3 transpose_block(TILE_DIM, TILE_DIM);
+			tranposeKernel<<<transpose_grid, transpose_block>>>(X_trans, X, N);
+
+			GridSize.y = NUM_FEATURES;
+			BlockSize.x = GRAD_COMP_BLOCK_SIZE;
+			GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
+			//computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+			computeGrad_v2<<<GridSize, BlockSize>>>(grad_weights, X_trans, intermediate_vector, batch_size, N, num_features, learning_rate);
+			updateGrad<<<1, NUM_FEATURES>>>(weights, grad_weights, learning_rate, N);
 		}
 	}
 	else
@@ -276,7 +294,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 
 	float *device_buffer_X, *device_buffer_y;
 
-	float bw;
+	//float bw;
 	clock_t start_time, end_time;
 	double total_time, total_time_by_dataset;
 
@@ -325,10 +343,10 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 
 	for (int i = 0; i < epoch; i++)
 	{
+		dataset.reset();
 		start_time = std::clock();
 		current_X = device_buffer_X;
 		current_y = device_buffer_y;
-		dataset.reset();
 		// TODO: Update file_stat accordingly.
 		//pending = file_stat.st_size;
 		/* Start the copy machine */
@@ -341,7 +359,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 			//transfer_size = (pending > host_buffer_size_y) ? host_buffer_size_y : pending;
 
 			//Item load using dataset.dataset.read(active);
-			dataset.getNextBatch(true, active);
+			dataset.getNextBatch(false, active);
 			/*if (read(fd, active, transfer_size) < transfer_size)
 			FATAL("Unable to read data from %s", file_name);*/
 
@@ -422,7 +440,7 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 	fprintf(stdout, "File Size %d", file_stat.st_size);
 }
 
-void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t stream)
+void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t & stream)
 {
 	//printf("Running trainmodelInStrean() ");
 	int num_threads_p_block = BLOCK_SIZE;
@@ -430,22 +448,33 @@ void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool 
 
 	dim3 GridSize(num_blocks, 1, 1);
 	dim3 BlockSize(num_threads_p_block, 1, 1);
-	const int X_dim = 32;
 
-	if (memory_coalescing)
-	{
-		//BlockSize.x = 800;
-		//GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
-		//computeForward<<<GridSize, BlockSize>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		memory_coalescedKernel_shared<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights,grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-		// BlockSize.y = NUM_FEATURES;
-		// computeGrad<<<GridSize, BlockSize, 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
-		// updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
-	}
-	else
-	{
-		uncoalescedKernel<<<GridSize, BlockSize, 0, stream>>>(weights, X, y, intermediate_vector, batch_size, N, num_features);
-		externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1), 0, stream>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
-	}
+	//cudaMemcpyAsync(host_weights, weights, num_features * sizeof(float), cudaMemcpyDeviceToHost, stream);
+
+	//cudaError_t cuda_ret = cudaMemcpyToSymbolAsync(constant_weights, host_weights, num_features * sizeof(float), 0, cudaMemcpyHostToDevice, stream);
+	//if (cuda_ret != cudaSuccess)
+	//	FATAL("Unable to copy to constant memory");
+
+	//memory_coalescedKernel<<<GridSize, BlockSize>>>(constant_weights, X, y, intermediate_vector, batch_size, N, num_features);
+	BlockSize.x = GRAD_COMP_BLOCK_SIZE;
+	GridSize.x = N;
+	// TODO: Constant Memory
+	computeForward<<<GridSize, BlockSize, 0, stream>>>(weights,X, y, intermediate_vector, batch_size, N, num_features);
+
+	//cudaMemcpy(weights, &constant_weights[0], num_features * sizeof(float), cudaMemcpyDeviceToDevice);
+
+	//externalKernel<<<dim3(1, 1, 1), dim3(X_dim, num_features, 1)>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, X_dim, learning_rate);
+
+	// TODO: Transpose Kernel
+	dim3 transpose_grid(ceilf((NUM_FEATURES * 1.0f) / TILE_DIM), ceilf((N * 1.0f) / TILE_DIM));
+	dim3 transpose_block(TILE_DIM, TILE_DIM);
+	tranposeKernel<<<transpose_grid, transpose_block, 0, stream>>>(X_trans, X, N);
+
+	GridSize.y = NUM_FEATURES;
+	BlockSize.x = GRAD_COMP_BLOCK_SIZE;
+	GridSize.x = ceilf((N * 1.0f) / BlockSize.x);
+	//computeGrad<<<GridSize, BlockSize>>>(weights, grad_weights, X, intermediate_vector, batch_size, N, num_features, learning_rate);
+	computeGrad_v2<<<GridSize, BlockSize, 0, stream>>>(grad_weights, X_trans, intermediate_vector, batch_size, N, num_features, learning_rate);
+	updateGrad<<<1, NUM_FEATURES, 0, stream>>>(weights, grad_weights, learning_rate, N);
+	cudaDeviceSynchronize();
 }

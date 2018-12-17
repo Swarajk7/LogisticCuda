@@ -28,15 +28,13 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 
 __global__ void computeForward(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
-	__shared__ float data[800];
-	// TODO : Index calculation colesced, works only for untransposed data.
+	__shared__ float data[GRAD_COMP_BLOCK_SIZE];
+
 	int index = blockIdx.x * NUM_FEATURES;
 	int tx = threadIdx.x;
-	data[tx] = tx < NUM_FEATURES ? X[index + tx] : 0.0f;
-	data[tx] *= weights[tx];
-	__syncthreads();
+	data[tx] = tx < NUM_FEATURES ? X[index + tx] * weights[tx] : 0.0f;
 
-	int stride = blockDim.x >> 1;
+	int stride = GRAD_COMP_BLOCK_SIZE >> 1;
 	while (stride >= 1)
 	{
 		__syncthreads();
@@ -52,8 +50,8 @@ __global__ void computeForward(float *weights, float *X, float *y, float *interm
 		float value = data[tx];
 		value = 1 / (1 + expf(-value));
 		//value = exp(value) / (1 + exp(value));
-		value -= y[index];
-		intermediate_vector[index] = value;
+		value -= y[blockIdx.x];
+		intermediate_vector[blockIdx.x] = value;
 	}
 }
 
@@ -135,9 +133,9 @@ __global__ void externalKernel(float *weights, float *grad_weights, float *X, fl
 // 	}
 // }
 
-__global__ void computeGrad_v2(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
+__global__ void computeGrad_v2(float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
 {
-	__shared__ float values[1024];
+	__shared__ float values[GRAD_COMP_BLOCK_SIZE];
 
 	int tx = threadIdx.x;
 	int ty = blockIdx.y;
@@ -257,4 +255,34 @@ __global__ void printKernel(float *weights, float *inter_vector, int num_feature
 	printf("Inter Values\n");
 	for (int i = 0; i < num_features; i++)
 		printf("%f ", inter_vector[i]);
+}
+
+__global__ void tranposeKernel(float *X_trans, const float *X, int N)
+{
+	// __shared__ float tile[TILE_DIM * TILE_DIM];
+
+	// int x = blockIdx.x * TILE_DIM + threadIdx.x;
+	// int y = blockIdx.y * TILE_DIM + threadIdx.y;
+	// int width = gridDim.x * TILE_DIM;
+	// if (x < NUM_FEATURES && y < N)
+	// {
+	// 	for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	// 		tile[(threadIdx.y + j) * TILE_DIM + threadIdx.x] = X[(y + j) * width + x];
+	// }
+	// else
+	// {
+	// 	for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	// 		tile[(threadIdx.y + j) * TILE_DIM + threadIdx.x] = 0.0f;
+	// }
+
+	// __syncthreads();
+
+	// for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	// 	X_trans[(y + j) * width + x] = tile[(threadIdx.y + j) * TILE_DIM + threadIdx.x];
+	int x = blockIdx.x * TILE_DIM + threadIdx.x;
+	int y = blockIdx.y * TILE_DIM + threadIdx.y;
+	if (x < NUM_FEATURES && y < N)
+	{
+		X_trans[x * N + y] = X[y * NUM_FEATURES + x];
+	}
 }

@@ -1,5 +1,8 @@
 #define BLOCK_SIZE 32
-#define NUM_FEATURES 784
+#define NUM_FEATURES 785
+#define TILE_DIM 32
+#define BLOCK_ROWS 8
+#define GRAD_COMP_BLOCK_SIZE 512
 #include "data_reader.h"
 #include <cuda.h>
 #include <fcntl.h>
@@ -15,9 +18,11 @@ class GPUClassificationModel
 	float *weights;
 	float *X;
 	float *y;
+	float *X_trans;
 	float *grad_weights;
 	float *intermediate_vector;
 	float *correct_val;
+	float *host_weights;
 
 	//__constant__ float constant_weights[29];
 
@@ -41,7 +46,7 @@ public:
 	void printIntermediateValue();
 	void printGpuData(float *array);
 	void SetDeviceArrayValues(float *devArray, float *hostArray, int num_elements);
-	void trainBatchInStream(float *, float *, int, bool, float, cudaStream_t);
+	void trainBatchInStream(float *, float *, int, bool, float, cudaStream_t&);
 };
 
 void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificationModel &model, int batch_size, const char *file_name, int epoch);
