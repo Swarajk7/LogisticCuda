@@ -265,7 +265,7 @@ void GPUClassificationModel::printGpuData(float *array)
 	printKernel<<<dim3(1, 1), dim3(1, 1)>>>(array, intermediate_vector, num_features);
 }
 
-void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificationModel &model, int batch_size, const char *file_name, int epoch)
+double dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificationModel &model, int batch_size, const char *file_name, int epoch)
 {
 	dataset.reset();
 	//static const size_t host_buffer_size = 512 * 1024;
@@ -298,6 +298,8 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 	clock_t start_time, end_time;
 	double total_time, total_time_by_dataset;
 
+    total_time=0;
+	total_time_by_dataset=0;
 	/* Open the file */
 	if ((fd = open(file_name, O_RDONLY)) < 0)
 		FATAL("Unable to open %s", file_name);
@@ -446,8 +448,8 @@ void dbl_buffer(HIGGSDataset &dataset, HIGGSDataset &valdataset, GPUClassificati
 	if (cuda_ret != cudaSuccess)
 		FATAL("Unable to free host memory");
 	close(fd);
-
-	fprintf(stdout, "File Size %d", file_stat.st_size);
+    return total_time;
+	//fprintf(stdout, "File Size %d", file_stat.st_size);
 }
 
 void GPUClassificationModel::trainBatchInStream(float *X, float *y, int N, bool memory_coalescing, float learning_rate, cudaStream_t &stream)
