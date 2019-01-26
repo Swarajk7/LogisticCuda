@@ -26,7 +26,7 @@ class HIGGSDataset
     void getNextBatch(bool transposed, HIGGSItem *item);
     bool hasNext();
     void reset();
-    static const int NUMBER_OF_FEATURE = 28;
+    static const int NUMBER_OF_FEATURE = 784;
 
     double total_time_taken;
     double total_batch_executed;

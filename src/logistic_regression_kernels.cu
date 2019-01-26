@@ -6,12 +6,9 @@
 
 __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
-	int index = blockIdx.x * blockDim.x + threadIdx.x;
 	int stride = 0;
 	float value = 0;
-	//Start needs to be verified
-	int start = index;
-	//int start = index * num_features;
+	int start = blockIdx.x * blockDim.x + threadIdx.x;
 	if (start < N)
 	{
 		for (int i = 0; i < num_features; i++)
@@ -19,24 +16,22 @@ __global__ void memory_coalescedKernel(float *weights, float *X, float *y, float
 			value += weights[i] * X[start + stride];
 			stride += size;
 		}
-		value = 1 / (1 + expf(-value));
+		value = 1 / (1 + __expf(-value));
 		//value = exp(value) / (1 + exp(value));
-		value -= y[index];
-		intermediate_vector[index] = value;
+		value -= y[start];
+		intermediate_vector[start] = value;
 	}
 }
 
-__global__ void computeForward(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
+__global__ void computeForward( float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
-	__shared__ float data[BLOCK_SIZE];
-	// TODO : Index calculation colesced, works only for untransposed data.
-	int index = blockIdx.x * blockDim.x;
-	int tx = threadIdx.x;
-	data[tx] = tx < NUM_FEATURES ? X[index + tx] : 0.0f;
-	data[tx] *= weights[tx];
-	__syncthreads();
+	__shared__ float data[GRAD_COMP_BLOCK_SIZE];
 
-	int stride = blockDim.x >> 1;
+	int index = blockIdx.x * NUM_FEATURES;
+	int tx = threadIdx.x;
+	data[tx] = tx < NUM_FEATURES ? X[index + tx] * constant_weights[tx] : 0.0f;
+
+	int stride = GRAD_COMP_BLOCK_SIZE >> 1;
 	while (stride >= 1)
 	{
 		__syncthreads();
@@ -50,10 +45,10 @@ __global__ void computeForward(float *weights, float *X, float *y, float *interm
 	if (tx == 0)
 	{
 		float value = data[tx];
-		value = 1 / (1 + expf(-value));
+		value = 1 / (1 + __expf(-value));
 		//value = exp(value) / (1 + exp(value));
-		value -= y[index];
-		intermediate_vector[index] = value;
+		value -= y[blockIdx.x];
+		intermediate_vector[blockIdx.x] = value;
 	}
 }
 
@@ -111,10 +106,7 @@ __global__ void computeGrad(float *weights, float *grad_weights, float *X, float
 		if (ty == 0)
 			intermediate_shared[tx] = intermediate_vector[col];
 		__syncthreads();
-
-		// TODO: check for memory colescing in a transposed way, may be?
 		values[tx][ty] += X[row * size + col] * intermediate_shared[tx];
-
 		__syncthreads();
 
 		int stride = blockDim.x >> 1;
@@ -135,9 +127,9 @@ __global__ void computeGrad(float *weights, float *grad_weights, float *X, float
 	}
 }
 
-__global__ void computeGrad_v2(float *weights, float *grad_weights, float *X, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
+__global__ void computeGrad_v2(float *grad_weights, float *X_trans, float *intermediate_vector, int size, int N, const int num_features, float learning_rate)
 {
-	__shared__ float values[1024];
+	__shared__ float values[GRAD_COMP_BLOCK_SIZE];
 
 	int tx = threadIdx.x;
 	int ty = blockIdx.y;
@@ -149,7 +141,7 @@ __global__ void computeGrad_v2(float *weights, float *grad_weights, float *X, fl
 	if (col < N)
 	{
 		// TODO: check for memory colescing in a transposed way, may be?
-		values[tx] = X[row * size + col] * intermediate_vector[col];
+		values[tx] = X_trans[row * size + col] * intermediate_vector[col];
 	}
 
 	__syncthreads();
@@ -194,9 +186,9 @@ __global__ void evaluate_model(float *weights, float *X, float *y, float *interm
 			value += weights[i] * X[start + stride];
 			stride += size;
 		}
-		value = 1 / (1 + expf(-value));
+		value = 1 / (1 + __expf(-value));
 		float y_pred = value > 0.5f ? 1.0f : 0.0f;
-		if (fabs(y_pred - y[index]) < 0.001)
+		if (fabs(y_pred - y[index]) < 0.001f)
 			atomicAdd(correct_val, 1);
 	}
 }
@@ -221,7 +213,7 @@ __global__ void uncoalescedKernel(float *weights, float *X, float *y, float *int
 __global__ void memory_coalescedKernel_shared(float *weights, float *X, float *y, float *intermediate_vector, int size, int N, int num_features)
 {
 	//BLOCK_SIZE should be greater than 29
-	__shared__ float weights_shared[29];
+	__shared__ float weights_shared[NUM_FEATURES];
 	if (threadIdx.x < num_features)
 	{
 		weights_shared[threadIdx.x] = weights[threadIdx.x];
@@ -257,4 +249,40 @@ __global__ void printKernel(float *weights, float *inter_vector, int num_feature
 	printf("Inter Values\n");
 	for (int i = 0; i < num_features; i++)
 		printf("%f ", inter_vector[i]);
+}
+
+__global__ void tranposeKernel(float *X_trans, float *X, int N, int size)
+{
+	/* __shared__ float tile[TILE_DIM * TILE_DIM];
+
+	int x = blockIdx.x * TILE_DIM + threadIdx.x;
+	int y = blockIdx.y * TILE_DIM + threadIdx.y;
+	int width = NUM_FEATURES;
+	 if (x < NUM_FEATURES && y < size)
+	 {
+	 	//for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	 		tile[(threadIdx.y) * TILE_DIM + threadIdx.x] = X[(y) * width + x];
+	 }
+	 else
+	 {
+	 //	for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	 		tile[(threadIdx.y ) * TILE_DIM + threadIdx.x] = 0.0f;
+	 }
+
+	 __syncthreads();
+
+   
+	 //for (int j = 0; j < TILE_DIM; j += BLOCK_ROWS)
+	 	X_trans[(x ) * size + y] = tile[(threadIdx.y ) * TILE_DIM + threadIdx.x];
+	 */
+	int x = blockIdx.x * TILE_DIM + threadIdx.x;
+	int y = blockIdx.y * TILE_DIM + threadIdx.y;
+	if (x < NUM_FEATURES && y < size)
+	{
+		X_trans[x * size + y] = X[y * NUM_FEATURES + x];
+	}
+	
+	// if (threadIdx.x < NUM_FEATURES)
+	 //	X_trans[threadIdx.x * gridDim.x + blockIdx.x] = X[threadIdx.x + blockIdx.x * blockDim.x];
+	//}
 }

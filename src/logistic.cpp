@@ -6,7 +6,8 @@ LogisticRegression::LogisticRegression(int features_count)
 {
     // generate random weights for features and one bias term.
     num_features = features_count;
-    weights = generate_random_weight(num_features + 1);
+    //weights = generate_random_weight(num_features + 1);
+    weights = generate_zeros(num_features+1);
 }
 
 int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
@@ -33,7 +34,6 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
             correct++;
         result[i] = sigmoid(mul) - item.y[i];
         // Compute Gradient
-        // Reuse result vector, assuming result is not required later. :)
         for (int j = 0; j < num_features + 1; j++)
         {
             grad_weights[j] += (result[i] * item.X[xindex + j]);
@@ -57,12 +57,12 @@ int LogisticRegression::trainBatch(HIGGSItem &item, float learning_rate)
 float LogisticRegression::evaluate(HIGGSDataset &validationSet, HIGGSItem *batch)
 {
     float correct = 0, total = 0;
-    float mul = 0.0f;
-    for (int j = 0; j < num_features + 1; j++)
-    {
-        mul += weights[j];
-    }
-    cout << "\n Sum: " << mul << endl;
+    // float mul = 0.0f;
+    // for (int j = 0; j < num_features + 1; j++)
+    // {
+    //     mul += weights[j];
+    // }
+    // cout << "\n Sum: " << mul << endl;
     while (validationSet.hasNext())
     {
         int xindex = 0;
